@@ -4,19 +4,9 @@
 
 The goal of this project is not to make a normal website around the game. The goal is simple: open the page and immediately play the game in a clean fullscreen desktop experience with sharper graphics, bigger objects, smoother motion, new difficult levels, unlocked content, and upgraded sound.
 
-![Gameplay preview](preview.mp4)
-
 ## Preview Video
 
-Yes, `preview.gif` can be replaced with a video.
-
-For the most reliable GitHub README preview, a GIF still works best everywhere. If you want to use a video, add a file like `preview.mp4` to the project and use this:
-
-```html
 <video src="./preview.mp4" controls muted loop playsinline width="100%"></video>
-```
-
-If the video does not render on a platform, keep `preview.gif` as a fallback or add a direct link to the video file.
 
 ## What Changed In This Remake
 
