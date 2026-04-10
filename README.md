@@ -1,125 +1,123 @@
-# Gravity Defied Web
+# Gravity Defied New Release 2026
 
-**Gravity Defied** is a legendary mototrial racing mobile game. It was originally developed by Codebrew Software in 2004 for J2ME platform.
+A desktop-first web remake of the classic **Gravity Defied** trial racing experience.
 
-This is a web browser port of Gravity Defied, written in TypeScript using Vite as the build tool. The project includes all the features of the original game and runs directly in modern web browsers.
-
-🎮 **Play online:**  
-https://yurkagon.github.io/gravity-defied-web/
+This project focuses on opening directly into the game with no surrounding website UI. The gameplay is rendered on a fullscreen HTML5 Canvas, tuned for modern desktop displays, sharp visuals, smooth motion, unlocked content, new hard tracks, and upgraded bike/rider presentation.
 
 ![Preview](preview.gif)
+
+## Highlights
+
+- Pure game-only fullscreen experience.
+- Desktop-first layout tuned for large displays.
+- Hi-DPI canvas rendering for crisp graphics.
+- Compact downhill mountain bike style rider and frame.
+- Smooth render interpolation to reduce high-speed jitter.
+- Wheel contact rolling sound and mountain moto bike engine sound.
+- All original menu locks removed.
+- Expanded level progression: `Easy`, `Medium`, `Pro`, `Expert`, `ExpertPro`, `ExpertProMax`.
+- Updated vector-style bike, rider, wheels, shocks, road, and race flags.
+- Checkered triangular race flags for start and finish markers.
+- Keyboard support for both arrow keys and `WASD`.
 
 ## Controls
 
 | Key | Action |
-|----|----|
-| ↑ / ↓ | Accelerate / Brake |
-| ← / → | Lean rider backward / forward |
-| W / S | Accelerate / Brake |
-| A / D | Lean rider backward / forward |
-| Enter | Select menu item |
-| Escape | Pause game |
+| --- | --- |
+| `Up` / `W` | Accelerate |
+| `Down` / `S` | Brake |
+| `Left` / `A` | Lean rider backward |
+| `Right` / `D` | Lean rider forward |
+| `Enter` | Select menu item |
+| `Escape` | Pause / back |
 
-## About
-
-This project is a browser-based port of the classic Gravity Defied game. It's built using:
-- **TypeScript** - for type-safe code
-- **JavaScript** - for runtime execution
-- **Vite** - for fast development and building
-- **HTML5 Canvas** - for rendering the game graphics
-
-The project is based on the C++ & SDL2 port: [gravity_defied_cpp](https://github.com/rgimad/gravity_defied_cpp)
-
-## Disclaimer
-
-**This Project is not associated with Codebrew Software in any fashion. All rights to the original Gravity Defied, it's name, logotype, brand and all that stuff belong to Codebrew Software.**
+Audio starts after the first keyboard or pointer interaction because browsers require user input before playing game sound.
 
 ## Getting Started
 
-### Prerequisites
-
-- Node.js (v18 or higher recommended)
-- npm or yarn
-
-### Installation
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-### Development
-
-Start the development server:
+Start the local development server:
 
 ```bash
 npm run dev
 ```
 
-The game will be available at `http://localhost:3000`
+Open the local URL printed by Vite in your terminal.
 
-### Build
+## Build
 
-Build the project for production:
+Create a production build:
 
 ```bash
 npm run build
 ```
 
-The built files will be in the `dist` directory.
-
-### Preview
-
-Preview the production build:
+Preview the production build locally:
 
 ```bash
-npm preview
+npm run preview
+```
+
+Deploy build for GitHub Pages:
+
+```bash
+npm run deploy
 ```
 
 ## Project Structure
 
+```text
+gravity-defied-new-release-2026/
+├── src/
+│   ├── app.ts                         # App bootstrap
+│   ├── runtime/
+│   │   ├── startGameRuntime.ts        # Browser game loop, fullscreen resize, input wiring
+│   │   ├── browserInput.ts            # Keyboard mapping
+│   │   └── RollingAudio.ts            # Rolling wheel and moto engine audio
+│   ├── GameCanvas.ts                  # Canvas renderer and visual effects
+│   ├── GamePhysics.ts                 # Bike physics, render interpolation, audio state
+│   ├── LevelLoader.ts                 # Level loading and generated level integration
+│   ├── generatedLevels.ts             # New Expert level sets
+│   └── ...                            # Menus, records, utilities, J2ME-style support classes
+├── index.html                         # HTML entry point
+├── package.json                       # Scripts and development dependencies
+├── vite.config.ts                     # Vite configuration
+└── preview.gif                        # Gameplay preview
 ```
-gravity-defied-web/
-├── src/                         # Source code
-│   ├── app.ts                  # Fullscreen game bootstrap
-│   ├── runtime/                # Game loop, resize, input, and browser wiring
-│   ├── main.ts                 # Application initialization
-│   └── ...                     # Physics, menus, rendering, storage, etc.
-├── index.html       # HTML entry point
-├── vite.config.ts   # Vite configuration
-└── package.json     # Dependencies and scripts
-```
 
-## Fullscreen Desktop Build
+## Technical Notes
 
-The current build is now focused on a pure game-only desktop presentation:
+The remake keeps the core trial-bike physics behavior intact while modernizing the browser runtime around it.
 
-- The original bike physics loop remains intact.
-- The app opens directly into the game instead of a surrounding website shell.
-- The canvas fills the full desktop viewport.
-- The runtime uses hi-DPI rendering and an enlarged gameplay scale for sharper fullscreen play.
-- The stage now supports both arrow-key and `WASD` play styles.
-- All tracks and leagues are unlocked from the start.
+- Rendering uses HTML5 Canvas with device-pixel-ratio scaling.
+- The game loop runs fixed physics steps and interpolates render state for smoother visual motion.
+- Bike and rider graphics are drawn as scalable canvas/vector details instead of relying on blurry low-resolution sprites.
+- Sound is generated with the Web Audio API, including rolling contact noise and a layered moto engine tone.
+- The game is written in TypeScript and built with Vite.
 
-This keeps the classic feel while pushing the presentation toward a cleaner fullscreen desktop experience.
+## Tech Stack
 
-## Technologies
+- TypeScript
+- Vite
+- HTML5 Canvas
+- Web Audio API
+- ESLint
 
-- **TypeScript** - Type-safe JavaScript
-- **Vite** - Next generation frontend tooling
-- **HTML5 Canvas** - 2D graphics rendering
-- **ESLint** - Code linting
+## Credits
 
-## Topics
+**Gravity Defied** is a classic mototrial mobile game originally developed by Codebrew Software for J2ME devices.
 
-`gravity-defied` `game` `mototrial` `racing` `browser-game` `typescript` `vite` `canvas` `web-game` `retro-game` `j2me-port`
+This project is an independent desktop-focused web remake inspired by the original game and based on the browser port/code lineage of Gravity Defied.
+
+## Disclaimer
+
+This project is not associated with Codebrew Software. All rights to the original Gravity Defied name, brand, logo, and original assets belong to their respective owners.
 
 ## License
 
-This project is licensed under the GNU General Public License v2.0 (GPL-2.0). See [LICENSE.md](LICENSE.md) for the full license text.
-
-## Contributing
-
-Contributions are welcome! Feel free to open issues or submit pull requests.
-# gravity-defied-new-release-2026
-# gravity-defied-new-release-2026
-# gravity-defied-new-release-2026
+This project is licensed under the GNU General Public License v2.0. See the repository license file for details.
