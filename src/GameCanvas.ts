@@ -64,13 +64,14 @@ export class GameCanvas {
   private isMenuButtonVisible = false
   private isBackButtonVisible = false
   private repaintHandler: (() => void) | null = null
+  private pixelRatio = 1
+  private renderZoom = 1.65
+  private cameraReady = false
   private static stringWithTime = ''
   private readonly time10MsToStringCache = new Array<string>(100).fill('')
   private timeInSeconds = -1
   private static flagAnimationTime = 0
   private static flagAnimationPhase = 0
-  private readonly startFlagAnimationTimeToSpriteNo = [12, 10, 11, 10]
-  private readonly finishFlagAnumationTimeToSpriteNo = [14, 13, 15, 13]
   private readonly actionInputDelta = [[0, 0], [1, 0], [0, -1], [0, 0], [0, 0], [0, 1], [-1, 0]]
   private readonly keyInputDeltaByMode = [
     [[0, 0], [1, -1], [1, 0], [1, 1], [0, -1], [-1, 0], [0, 1], [-1, -1], [-1, 0], [-1, 1]],
@@ -152,15 +153,21 @@ export class GameCanvas {
     this.height = canvas.height
     this.height2 = canvas.height
     this.dy = this.height2
+    this.ctx.lineCap = 'round'
+    this.ctx.lineJoin = 'round'
     GameCanvas.defaultFontWidth00 = 25
   }
 
   resize(width: number, height: number): void {
-    this.canvas.width = width
-    this.canvas.height = height
-    this.width = width
-    this.height = height
-    this.height2 = height
+    this.pixelRatio = Math.max(1, Math.min(window.devicePixelRatio || 1, 3))
+    this.renderZoom = 1.65
+    this.canvas.style.width = `${width}px`
+    this.canvas.style.height = `${height}px`
+    this.canvas.width = Math.max(1, Math.floor(width * this.pixelRatio))
+    this.canvas.height = Math.max(1, Math.floor(height * this.pixelRatio))
+    this.width = Math.max(1, Math.floor(width / this.renderZoom))
+    this.height = Math.max(1, Math.floor(height / this.renderZoom))
+    this.height2 = this.height
   }
 
   getWidth(): number {
@@ -180,8 +187,9 @@ export class GameCanvas {
     void this.cameraOffsetX
     void this.cameraOffsetY
     void this.loadingScreenMode
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0)
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
+    this.ctx.setTransform(this.pixelRatio * this.renderZoom, 0, 0, this.pixelRatio * this.renderZoom, 0, 0)
+    this.ctx.clearRect(0, 0, this.width, this.height)
+    this.ctx.lineWidth = 1.35
     this.processTimers()
   }
 
@@ -257,9 +265,16 @@ export class GameCanvas {
   }
 
   setViewPosition(dx: number, dy: number): void {
-    this.dx = dx
-    this.dy = dy
-    this.gamePhysics?.setRenderMinMaxX(-dx, -dx + this.width)
+    if (!this.cameraReady) {
+      this.dx = dx
+      this.dy = dy
+      this.cameraReady = true
+    } else {
+      this.dx += (dx - this.dx) * 0.18
+      this.dy += (dy - this.dy) * 0.18
+    }
+
+    this.gamePhysics?.setRenderMinMaxX(-Math.round(this.dx), -Math.round(this.dx) + this.width)
   }
 
   getDx(): number {
@@ -279,7 +294,7 @@ export class GameCanvas {
   }
 
   drawLineF16(x: number, y: number, x2: number, y2: number): void {
-    this.graphics.drawLine(this.addDx((x << 2) >> 16), this.addDy((y << 2) >> 16), this.addDx((x2 << 2) >> 16), this.addDy((y2 << 2) >> 16))
+    this.graphics.drawLine(this.addDx(x / 16384), this.addDy(y / 16384), this.addDx(x2 / 16384), this.addDy(y2 / 16384))
   }
 
   renderBodyPart(x1F16: number, y1F16: number, x2F16: number, y2F16: number, bodyPartNo: number, tF16 = 32768): void {
@@ -289,8 +304,8 @@ export class GameCanvas {
     const spriteNo = this.calcSpriteNo(angleFP16, 0, 205887, 16, false)
 
     if (this.bodyPartsImages[bodyPartNo] !== null) {
-      let drawX = x - Math.trunc(this.bodyPartsSpriteWidth[bodyPartNo] / 2)
-      let drawY = y - Math.trunc(this.bodyPartsSpriteHeight[bodyPartNo] / 2)
+      const drawX = x - Math.trunc(this.bodyPartsSpriteWidth[bodyPartNo] / 2)
+      const drawY = y - Math.trunc(this.bodyPartsSpriteHeight[bodyPartNo] / 2)
       this.graphics.setClip(drawX, drawY, this.bodyPartsSpriteWidth[bodyPartNo], this.bodyPartsSpriteHeight[bodyPartNo])
       this.graphics.drawImage(
         this.bodyPartsImages[bodyPartNo] as Image,
@@ -299,29 +314,32 @@ export class GameCanvas {
         Graphics.LEFT | Graphics.TOP,
       )
       this.graphics.setClip(0, 0, this.width, this.getHeight())
-      drawX = drawX
-      drawY = drawY
     }
   }
 
   drawWheelArc(var1: number, var2: number, var3: number, var4: number): void {
-    ++var3
-    const var5 = this.addDx(var1 - var3)
-    const var6 = this.addDy(var2 + var3)
-    const var7 = var3 << 1
+    const radius = var3 + 1
     let angle = -toInt(((BigInt(toInt((BigInt(var4) * 11796480n) >> 16n)) << 32n) / 205887n) >> 16n)
     if (angle < 0) {
       angle += 360
     }
 
-    this.graphics.drawArc(var5, var6, var7, var7, (angle >> 16) + 170, 90)
+    const startAngle = ((angle >> 16) + 170) * (Math.PI / 180)
+    const endAngle = (((angle >> 16) + 260) * Math.PI) / 180
+    this.ctx.save()
+    this.ctx.beginPath()
+    this.ctx.arc(this.addDx(var1), this.addDy(var2), radius, startAngle, endAngle)
+    this.ctx.stroke()
+    this.ctx.restore()
   }
 
   drawCircle(x: number, y: number, size: number): void {
-    const radius = Math.trunc(size / 2)
-    const localX = this.addDx(x - radius)
-    const localY = this.addDy(y + radius)
-    this.graphics.drawArc(localX, localY, size, size, 0, 360)
+    const radius = size / 2
+    this.ctx.save()
+    this.ctx.beginPath()
+    this.ctx.arc(this.addDx(x), this.addDy(y), radius, 0, Math.PI * 2)
+    this.ctx.stroke()
+    this.ctx.restore()
   }
 
   fillRect(x: number, y: number, w: number, h: number): void {
@@ -329,9 +347,160 @@ export class GameCanvas {
   }
 
   drawForthSpriteByCenter(centerX: number, centerY: number): void {
-    const halfSizeX = Math.trunc(GameCanvas.spriteSizeX[4] / 2)
-    const halfSizeY = Math.trunc(GameCanvas.spriteSizeY[4] / 2)
-    this.drawSprite(this.graphics, 4, this.addDx(centerX - halfSizeX), this.addDy(centerY + halfSizeY))
+    const size = 4
+    this.graphics.fillRect(this.addDx(centerX - Math.trunc(size / 2)), this.addDy(centerY + Math.trunc(size / 2)), size, size)
+  }
+
+  strokeSegmentF16(x1F16: number, y1F16: number, x2F16: number, y2F16: number, width: number, color: string): void {
+    this.ctx.save()
+    this.ctx.beginPath()
+    this.ctx.lineCap = 'round'
+    this.ctx.lineJoin = 'round'
+    this.ctx.lineWidth = width
+    this.ctx.strokeStyle = color
+    this.ctx.moveTo(this.addDx(x1F16 / 16384), this.addDy(y1F16 / 16384))
+    this.ctx.lineTo(this.addDx(x2F16 / 16384), this.addDy(y2F16 / 16384))
+    this.ctx.stroke()
+    this.ctx.restore()
+  }
+
+  fillCircleF16(xF16: number, yF16: number, radiusF16: number, fillColor: string, strokeColor?: string, strokeWidth = 1): void {
+    this.ctx.save()
+    this.ctx.beginPath()
+    this.ctx.arc(this.addDx(xF16 / 16384), this.addDy(yF16 / 16384), radiusF16 / 16384, 0, Math.PI * 2)
+    this.ctx.fillStyle = fillColor
+    this.ctx.fill()
+    if (strokeColor !== undefined) {
+      this.ctx.lineWidth = strokeWidth
+      this.ctx.strokeStyle = strokeColor
+      this.ctx.stroke()
+    }
+    this.ctx.restore()
+  }
+
+  strokePolylineF16(points: ReadonlyArray<readonly [number, number]>, width: number, color: string, closed = false): void {
+    if (points.length < 2) {
+      return
+    }
+
+    this.ctx.save()
+    this.ctx.beginPath()
+    this.ctx.lineCap = 'round'
+    this.ctx.lineJoin = 'round'
+    this.ctx.lineWidth = width
+    this.ctx.strokeStyle = color
+    this.ctx.moveTo(this.addDx(points[0][0] / 16384), this.addDy(points[0][1] / 16384))
+    for (let i = 1; i < points.length; ++i) {
+      this.ctx.lineTo(this.addDx(points[i][0] / 16384), this.addDy(points[i][1] / 16384))
+    }
+    if (closed) {
+      this.ctx.closePath()
+    }
+    this.ctx.stroke()
+    this.ctx.restore()
+  }
+
+  fillPolygonF16(points: ReadonlyArray<readonly [number, number]>, fillColor: string, strokeColor?: string, strokeWidth = 1): void {
+    if (points.length < 3) {
+      return
+    }
+
+    this.ctx.save()
+    this.ctx.beginPath()
+    this.ctx.moveTo(this.addDx(points[0][0] / 16384), this.addDy(points[0][1] / 16384))
+    for (let i = 1; i < points.length; ++i) {
+      this.ctx.lineTo(this.addDx(points[i][0] / 16384), this.addDy(points[i][1] / 16384))
+    }
+    this.ctx.closePath()
+    this.ctx.fillStyle = fillColor
+    this.ctx.fill()
+    if (strokeColor !== undefined) {
+      this.ctx.lineWidth = strokeWidth
+      this.ctx.strokeStyle = strokeColor
+      this.ctx.stroke()
+    }
+    this.ctx.restore()
+  }
+
+  drawCoilShockF16(x1F16: number, y1F16: number, x2F16: number, y2F16: number, width: number, color: string, turns = 6): void {
+    if (turns < 2) {
+      this.strokeSegmentF16(x1F16, y1F16, x2F16, y2F16, width, color)
+      return
+    }
+
+    const dx = x2F16 - x1F16
+    const dy = y2F16 - y1F16
+    const length = Math.hypot(dx, dy)
+    if (length < 1) {
+      return
+    }
+
+    const nx = -dy / length
+    const ny = dx / length
+    const amp = Math.min(14000, length * 0.16)
+    const points: [number, number][] = [[x1F16, y1F16]]
+    for (let i = 1; i < turns; ++i) {
+      const t = i / turns
+      const dir = i % 2 === 0 ? -1 : 1
+      points.push([Math.round(x1F16 + dx * t + nx * amp * dir), Math.round(y1F16 + dy * t + ny * amp * dir)])
+    }
+    points.push([x2F16, y2F16])
+    this.strokePolylineF16(points, width, color)
+  }
+
+  drawPremiumWheelF16(xF16: number, yF16: number, radiusF16: number, angleF16: number, thinTire: boolean, accentColor: string): void {
+    const radius = radiusF16 / 16384
+    const x = this.addDx(xF16 / 16384)
+    const y = this.addDy(yF16 / 16384)
+    const tireThickness = thinTire ? 0.8 : 1.15
+    const outerRadius = radius + tireThickness
+    const rimRadius = radius * 0.88
+    const rotorRadius = radius * 0.36
+    const hubRadius = Math.max(1.4, radius * 0.09)
+    const spokeCount = 5
+    const baseAngle = (angleF16 / 65536) * Math.PI
+
+    this.ctx.save()
+    this.ctx.beginPath()
+    this.ctx.arc(x, y, outerRadius, 0, Math.PI * 2)
+    this.ctx.fillStyle = '#202124'
+    this.ctx.fill()
+
+    this.ctx.beginPath()
+    this.ctx.arc(x, y, radius, 0, Math.PI * 2)
+    this.ctx.fillStyle = '#eef2f4'
+    this.ctx.fill()
+
+    this.ctx.beginPath()
+    this.ctx.arc(x, y, rimRadius, 0, Math.PI * 2)
+    this.ctx.lineWidth = 0.8
+    this.ctx.strokeStyle = '#70767c'
+    this.ctx.stroke()
+
+    this.ctx.lineWidth = Math.max(1.2, radius * 0.075)
+    this.ctx.strokeStyle = '#495057'
+    for (let i = 0; i < spokeCount; ++i) {
+      const a = baseAngle + (i / spokeCount) * Math.PI * 2
+      this.ctx.beginPath()
+      this.ctx.moveTo(x, y)
+      this.ctx.lineTo(x + Math.cos(a) * rotorRadius, y + Math.sin(a) * rotorRadius)
+      this.ctx.stroke()
+    }
+
+    this.ctx.beginPath()
+    this.ctx.arc(x, y, rotorRadius, 0, Math.PI * 2)
+    this.ctx.lineWidth = 0.9
+    this.ctx.strokeStyle = '#7a8087'
+    this.ctx.stroke()
+
+    this.ctx.beginPath()
+    this.ctx.arc(x, y, hubRadius, 0, Math.PI * 2)
+    this.ctx.fillStyle = accentColor
+    this.ctx.fill()
+    this.ctx.lineWidth = 0.9
+    this.ctx.strokeStyle = '#30343a'
+    this.ctx.stroke()
+    this.ctx.restore()
   }
 
   drawHelmet(x: number, y: number, angleF16: number): void {
@@ -393,9 +562,7 @@ export class GameCanvas {
       GameCanvas.flagAnimationTime = 0
     }
 
-    this.setColor(0, 0, 0)
-    this.drawLine(x, y, x, y + 32)
-    this.drawSprite(this.graphics, this.startFlagAnimationTimeToSpriteNo[GameCanvas.flagAnimationTime >> 16], this.addDx(x), this.addDy(y) - 32)
+    this.drawVectorFlag(x, y, [42, 42, 42], false)
   }
 
   renderFinishFlag(x: number, y: number): void {
@@ -403,9 +570,7 @@ export class GameCanvas {
       GameCanvas.flagAnimationTime = 0
     }
 
-    this.setColor(0, 0, 0)
-    this.drawLine(x, y, x, y + 32)
-    this.drawSprite(this.graphics, this.finishFlagAnumationTimeToSpriteNo[GameCanvas.flagAnimationTime >> 16], this.addDx(x), this.addDy(y) - 32)
+    this.drawVectorFlag(x, y, [42, 42, 42], true)
   }
 
   drawWheelTires(x: number, y: number, wheelIsThin: number): void {
@@ -416,7 +581,9 @@ export class GameCanvas {
   }
 
   calcSpriteNo(angleF16: number, var2: number, var3: number, var4: number, var5: boolean): number {
-    for (angleF16 += var2; angleF16 < 0; angleF16 += var3) {}
+    for (angleF16 += var2; angleF16 < 0; angleF16 += var3) {
+      // Normalize negative fixed-point angles into the sprite lookup range.
+    }
 
     while (angleF16 >= var3) {
       angleF16 -= var3
@@ -467,8 +634,12 @@ export class GameCanvas {
   }
 
   clearScreenWithWhite(): void {
-    this.graphics.setColor(255, 255, 255)
-    this.graphics.fillRect(0, 0, this.width, this.height2)
+    const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.height2)
+    skyGradient.addColorStop(0, '#f5f9ff')
+    skyGradient.addColorStop(0.38, '#ffffff')
+    skyGradient.addColorStop(1, '#eef7ea')
+    this.ctx.fillStyle = skyGradient
+    this.ctx.fillRect(0, 0, this.width, this.height2)
   }
 
   setColor(red: number, green: number, blue: number): void {
@@ -521,6 +692,46 @@ export class GameCanvas {
     this.inputMode = var1
   }
 
+  private drawVectorFlag(x: number, y: number, poleColor: [number, number, number], isFinishFlag: boolean): void {
+    void isFinishFlag
+    const wave = Math.sin(GameCanvas.flagAnimationPhase / 1800) * 2.5
+    this.setColor(poleColor[0], poleColor[1], poleColor[2])
+    this.drawLine(x, y, x, y + 38)
+
+    const poleTopX = this.addDx(x + 1)
+    const poleTopY = this.addDy(y + 36)
+    const flagWidth = 34
+    const flagHeight = 18
+    const checkerSize = 5
+
+    this.ctx.save()
+    this.ctx.beginPath()
+    this.ctx.moveTo(poleTopX, poleTopY)
+    this.ctx.lineTo(poleTopX + flagWidth + wave, poleTopY + flagHeight / 2)
+    this.ctx.lineTo(poleTopX, poleTopY + flagHeight)
+    this.ctx.closePath()
+    this.ctx.clip()
+
+    for (let row = 0; row < 4; ++row) {
+      for (let col = 0; col < 8; ++col) {
+        this.ctx.fillStyle = (row + col) % 2 === 0 ? '#f8f8f2' : '#111111'
+        this.ctx.fillRect(poleTopX + col * checkerSize, poleTopY + row * checkerSize, checkerSize, checkerSize)
+      }
+    }
+
+    this.ctx.restore()
+    this.ctx.save()
+    this.ctx.beginPath()
+    this.ctx.moveTo(poleTopX, poleTopY)
+    this.ctx.lineTo(poleTopX + flagWidth + wave, poleTopY + flagHeight / 2)
+    this.ctx.lineTo(poleTopX, poleTopY + flagHeight)
+    this.ctx.closePath()
+    this.ctx.lineWidth = 1.2
+    this.ctx.strokeStyle = '#111111'
+    this.ctx.stroke()
+    this.ctx.restore()
+  }
+
   drawGame(g: Graphics): void {
     if (!Micro.isGameVisible || this.micro.isLoadingBlocked || this.gamePhysics === null) {
       return
@@ -550,13 +761,16 @@ export class GameCanvas {
     }
 
     this.gamePhysics.setMotoComponents()
+    this.cameraOffsetY = Math.trunc(this.height2 * 0.11)
     this.setViewPosition(-this.gamePhysics.getCamPosX() + this.cameraOffsetX + (this.width >> 1), this.gamePhysics.getCamPosY() + this.cameraOffsetY + (this.height2 >> 1))
     this.gamePhysics.renderGame(this)
-    if (this.isDrawingTime) {
+    if (this.isUiOverlayEnabled && this.isDrawingTime) {
       this.drawTime(this.micro.gameTimeMs / 10)
     }
-    this.drawTimerMessage()
-    this.drawProgressBar(this.gamePhysics.getProgressF16(), false)
+    if (this.isUiOverlayEnabled) {
+      this.drawTimerMessage()
+      this.drawProgressBar(this.gamePhysics.getProgressF16(), false)
+    }
   }
 
   paint(g: Graphics): void {

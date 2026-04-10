@@ -15,6 +15,8 @@ https://yurkagon.github.io/gravity-defied-web/
 |----|----|
 | ↑ / ↓ | Accelerate / Brake |
 | ← / → | Lean rider backward / forward |
+| W / S | Accelerate / Brake |
+| A / D | Lean rider backward / forward |
 | Enter | Select menu item |
 | Escape | Pause game |
 
@@ -77,14 +79,28 @@ npm preview
 
 ```
 gravity-defied-web/
-├── src/              # Source code
-│   ├── app.ts       # Main application entry point
-│   ├── main.ts      # Application initialization
-│   └── ...          # Game logic, canvas rendering, physics, etc.
+├── src/                         # Source code
+│   ├── app.ts                  # Fullscreen game bootstrap
+│   ├── runtime/                # Game loop, resize, input, and browser wiring
+│   ├── main.ts                 # Application initialization
+│   └── ...                     # Physics, menus, rendering, storage, etc.
 ├── index.html       # HTML entry point
 ├── vite.config.ts   # Vite configuration
 └── package.json     # Dependencies and scripts
 ```
+
+## Fullscreen Desktop Build
+
+The current build is now focused on a pure game-only desktop presentation:
+
+- The original bike physics loop remains intact.
+- The app opens directly into the game instead of a surrounding website shell.
+- The canvas fills the full desktop viewport.
+- The runtime uses hi-DPI rendering and an enlarged gameplay scale for sharper fullscreen play.
+- The stage now supports both arrow-key and `WASD` play styles.
+- All tracks and leagues are unlocked from the start.
+
+This keeps the classic feel while pushing the presentation toward a cleaner fullscreen desktop experience.
 
 ## Technologies
 

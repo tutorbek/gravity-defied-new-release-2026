@@ -435,6 +435,32 @@ export class MenuManager implements IMenuManager {
     return this.settingsStringTrack?.getCurrentOptionPos() ?? 0
   }
 
+  unlockAllContent(): void {
+    this.availableLeagues = 3
+    this.maxAvailableLevel = 2
+
+    if (this.micro.levelLoader !== null) {
+      for (let i = 0; i < 3; ++i) {
+        this.unlockedTracksByLevel[i] = this.micro.levelLoader.levelNames[i].length - 1
+      }
+    }
+
+    this.leagueNamesAll4 = ['100cc', '175cc', '220cc', '325cc']
+    this.leagueNames = this.leagueNamesAll4
+
+    this.settingStringLevel?.setAvailableOptions(this.maxAvailableLevel)
+    this.settingsStringLeague?.setOptionsList(this.leagueNamesAll4)
+    this.settingsStringLeague?.setAvailableOptions(this.availableLeagues)
+
+    if (this.micro.levelLoader !== null && this.settingStringLevel !== null && this.settingsStringTrack !== null) {
+      this.settingsStringTrack.setOptionsList(this.micro.levelLoader.levelNames[this.settingStringLevel.getCurrentOptionPos()])
+      this.settingsStringTrack.setAvailableOptions(this.unlockedTracksByLevel[this.settingStringLevel.getCurrentOptionPos()])
+    }
+
+    this.driverSpriteSetting?.setCurrentOptionPos(1)
+    this.bikeSpriteSetting?.setCurrentOptionPos(1)
+  }
+
   consumeRestartRequested(): boolean {
     if (this.restartRequested) {
       this.restartRequested = false
@@ -874,14 +900,14 @@ export class MenuManager implements IMenuManager {
 
     if (menuElement === this.driverSpriteSetting) {
       if (this.driverSpriteSetting.consumeSelectionMenuRequested()) {
-        this.driverSpriteSetting.setCurrentOptionPos(this.driverSpriteSetting.getCurrentOptionPos() + 1)
+        this.driverSpriteSetting.setCurrentOptionPos(1)
       }
       return
     }
 
     if (menuElement === this.bikeSpriteSetting) {
       if (this.bikeSpriteSetting.consumeSelectionMenuRequested()) {
-        this.bikeSpriteSetting.setCurrentOptionPos(this.bikeSpriteSetting.getCurrentOptionPos() + 1)
+        this.bikeSpriteSetting.setCurrentOptionPos(1)
       }
       return
     }
@@ -1027,28 +1053,13 @@ export class MenuManager implements IMenuManager {
   }
 
   getLoadedSpriteFlags(): number {
-    let var1 = 0
-    if ((this.driverSpriteSetting?.getCurrentOptionPos() ?? 1) === 0) {
-      var1 |= 2
-    }
-
-    if ((this.bikeSpriteSetting?.getCurrentOptionPos() ?? 1) === 0) {
-      var1 |= 1
-    }
-
-    return var1
+    return 0
   }
 
   applyLoadedSpriteFlags(var1: number): void {
+    void var1
     this.bikeSpriteSetting?.setCurrentOptionPos(1)
     this.driverSpriteSetting?.setCurrentOptionPos(1)
-    if ((var1 & 1) > 0) {
-      this.bikeSpriteSetting?.setCurrentOptionPos(0)
-    }
-
-    if ((var1 & 2) > 0) {
-      this.driverSpriteSetting?.setCurrentOptionPos(0)
-    }
   }
 
   getSelectedLevel(): number {

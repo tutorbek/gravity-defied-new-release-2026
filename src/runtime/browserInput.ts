@@ -1,0 +1,37 @@
+const keyboardCodeToGameKeyCode: Record<string, number> = {
+  ArrowDown: 6,
+  ArrowLeft: 2,
+  ArrowRight: 5,
+  ArrowUp: 1,
+  Digit0: 48,
+  Digit1: 49,
+  Digit2: 50,
+  Digit3: 51,
+  Digit4: 52,
+  Digit5: 53,
+  Digit6: 54,
+  Digit7: 55,
+  Digit8: 56,
+  Digit9: 57,
+  Enter: 8,
+  KeyA: 2,
+  KeyD: 5,
+  KeyS: 6,
+  KeyW: 1,
+  Numpad0: 48,
+  Numpad1: 49,
+  Numpad2: 50,
+  Numpad3: 51,
+  Numpad4: 52,
+  Numpad5: 53,
+  Numpad6: 54,
+  Numpad7: 55,
+  Numpad8: 56,
+  Numpad9: 57,
+  NumpadEnter: 8,
+  Space: 8,
+}
+
+export function browserKeyCodeToGameKeyCode(code: string): number | null {
+  return keyboardCodeToGameKeyCode[code] ?? null
+}

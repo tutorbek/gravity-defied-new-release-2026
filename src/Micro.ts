@@ -21,10 +21,7 @@ export class Micro {
 
   gameToMenu(): void {
     this.gameCanvas?.hideMenuButton()
-    if (this.gameCanvas !== null) {
-      this.gameCanvas.isDrawingTime = false
-      this.gameCanvas.hideBackButton()
-    }
+    this.gameCanvas?.hideBackButton()
     Micro.isInGameMenu = true
   }
 
@@ -32,8 +29,8 @@ export class Micro {
     Micro.isInGameMenu = false
     if (this.gameCanvas !== null) {
       this.gameCanvas.isDrawingTime = true
-      this.gameCanvas.hideBackButton()
     }
+    this.gameCanvas?.hideBackButton()
     this.gameCanvas?.showMenuButton()
   }
 }

@@ -25,6 +25,9 @@ export class GamePhysics {
   private collisionNormalYF16 = 0
   private isCrashed = false
   private isRiderDown = false
+  private rollingContactFrameAge = 999
+  private rollingContactSpeedF16 = 0
+  private rollingPitchF16 = 0
   private riderPoseBlendF16 = 32768
   private readonly leanStepF16 = 3276
   private rotationSpeedF16 = 0
@@ -110,14 +113,9 @@ export class GamePhysics {
   }
 
   applyLoadedSpriteFlags(var1: number): void {
+    void var1
     this.isRenderDriverWithSprites = false
     this.isRenderMotoWithSprites = false
-    if ((var1 & 2) !== 0) {
-      this.isRenderDriverWithSprites = true
-    }
-    if ((var1 & 1) !== 0) {
-      this.isRenderMotoWithSprites = true
-    }
   }
 
   setMode(mode: number): void {
@@ -514,6 +512,7 @@ export class GamePhysics {
   }
 
   updatePhysics(): number {
+    ++this.rollingContactFrameAge
     this.isInputAcceleration = this.isInputUp
     this.isInputBreak = this.isInputDown
     this.isInputBack = this.isInputLeft
@@ -845,6 +844,12 @@ export class GamePhysics {
     var3.angularVelocityF16 = var14
     var3.velocityXF16 = var17 + var19
     var3.velocityYF16 = var18 + var20
+
+    if (this.collisionBodyIndex === 1 || this.collisionBodyIndex === 2) {
+      this.rollingContactFrameAge = 0
+      this.rollingContactSpeedF16 = Math.max(abs(var13), abs(var3.angularVelocityF16))
+      this.rollingPitchF16 = abs(var3.angularVelocityF16)
+    }
   }
 
   setEnableLookAhead(value: boolean): void {
@@ -853,6 +858,31 @@ export class GamePhysics {
 
   setMinimalScreenWH(minWH: number): void {
     this.lookAheadClampF16 = divideF16(multiplyF16(655360, minWH << 16), 8388608)
+  }
+
+  getRollingAudioState(): { contact: number; pitch: number; speed: number } {
+    const contact = this.isCrashed || this.isRiderDown || this.rollingContactFrameAge > 8 ? 0 : 1 - this.rollingContactFrameAge / 9
+    const speed = Math.min(1, this.rollingContactSpeedF16 / 2200000)
+    const pitch = Math.min(1, this.rollingPitchF16 / 1800000)
+    return { contact, pitch, speed }
+  }
+
+  getMotorAudioState(): { load: number; pitch: number; throttle: number } {
+    if (this.isCrashed || this.isRiderDown) {
+      return { load: 0, pitch: 0, throttle: 0 }
+    }
+
+    const rearWheel = this.bikeParts[2]?.motoComponents[this.index01]
+    const body = this.bikeParts[0]?.motoComponents[this.index01]
+    const wheelPitch = rearWheel === undefined ? 0 : Math.min(1, abs(rearWheel.angularVelocityF16) / 1800000)
+    const bodySpeed = body === undefined ? 0 : Math.min(1, GamePhysics.getSmthLikeMaxAbs(body.velocityXF16, body.velocityYF16) / 2200000)
+    const load = Math.min(1, abs(this.wheelTorqueF16) / Math.max(1, GamePhysics.motoParam4))
+    const throttle = this.isInputAcceleration ? 1 : load * 0.35
+    return {
+      load,
+      pitch: Math.max(wheelPitch, bodySpeed * 0.55),
+      throttle,
+    }
   }
 
   getCamPosX(): number {
@@ -884,11 +914,15 @@ export class GamePhysics {
     return this.isCrashed ? this.levelLoader.getProgressF16(this.motoComponents[0].xF16) : this.levelLoader.getProgressF16(var1)
   }
 
-  syncRenderStateFromSimulation(): void {
+  syncRenderStateFromSimulation(alpha = 1): void {
+    const clampedAlpha = alpha < 0 ? 0 : alpha > 1 ? 1 : alpha
+
     for (let var2 = 0; var2 < 6; ++var2) {
-      this.bikeParts[var2].motoComponents[5].xF16 = this.bikeParts[var2].motoComponents[this.index01].xF16
-      this.bikeParts[var2].motoComponents[5].yF16 = this.bikeParts[var2].motoComponents[this.index01].yF16
-      this.bikeParts[var2].motoComponents[5].angleF16 = this.bikeParts[var2].motoComponents[this.index01].angleF16
+      const previous = this.bikeParts[var2].motoComponents[this.index10]
+      const current = this.bikeParts[var2].motoComponents[this.index01]
+      this.bikeParts[var2].motoComponents[5].xF16 = previous.xF16 + Math.trunc((current.xF16 - previous.xF16) * clampedAlpha)
+      this.bikeParts[var2].motoComponents[5].yF16 = previous.yF16 + Math.trunc((current.yF16 - previous.yF16) * clampedAlpha)
+      this.bikeParts[var2].motoComponents[5].angleF16 = previous.angleF16 + Math.trunc((current.angleF16 - previous.angleF16) * clampedAlpha)
     }
 
     this.bikeParts[0].motoComponents[5].velocityXF16 = this.bikeParts[0].motoComponents[this.index01].velocityXF16
@@ -947,60 +981,12 @@ export class GamePhysics {
   }
 
   private renderWheelSpokes(gameCanvas: GameCanvas): void {
-    const var2 = this.bikeParts[1].collisionRadiusF16
-    const xxxF16 = multiplyF16(var2, 58982)
-    const yyyF16 = multiplyF16(var2, 45875)
-    gameCanvas.setColor(0, 0, 0)
-
-    if (Micro.isInGameMenu) {
-      gameCanvas.drawCircle((this.motoComponents[1].xF16 << 2) >> 16, (this.motoComponents[1].yF16 << 2) >> 16, ((var2 + var2) << 2) >> 16)
-      gameCanvas.drawCircle((this.motoComponents[1].xF16 << 2) >> 16, (this.motoComponents[1].yF16 << 2) >> 16, ((xxxF16 + xxxF16) << 2) >> 16)
-      gameCanvas.drawCircle((this.motoComponents[2].xF16 << 2) >> 16, (this.motoComponents[2].yF16 << 2) >> 16, ((var2 + var2) << 2) >> 16)
-      gameCanvas.drawCircle((this.motoComponents[2].xF16 << 2) >> 16, (this.motoComponents[2].yF16 << 2) >> 16, ((yyyF16 + yyyF16) << 2) >> 16)
-    }
-
-    let var6 = 0
-    let angle = this.motoComponents[1].angleF16
-    let cosF16 = MathF16.cosF16(angle)
-    let sinF16 = MathF16.sinF16(angle)
-    let dxF16 = multiplyF16(cosF16, xxxF16) + multiplyF16(-sinF16, var6)
-    let dyF16 = multiplyF16(sinF16, xxxF16) + multiplyF16(cosF16, var6)
-    angle = 82354
-    cosF16 = MathF16.cosF16(82354)
-    sinF16 = MathF16.sinF16(angle)
-
-    for (let i = 0; i < 5; ++i) {
-      gameCanvas.drawLineF16(this.motoComponents[1].xF16, this.motoComponents[1].yF16, this.motoComponents[1].xF16 + dxF16, this.motoComponents[1].yF16 + dyF16)
-      const var10 = dxF16
-      dxF16 = multiplyF16(cosF16, dxF16) + multiplyF16(-sinF16, dyF16)
-      dyF16 = multiplyF16(sinF16, var10) + multiplyF16(cosF16, dyF16)
-    }
-
-    var6 = 0
-    angle = this.motoComponents[2].angleF16
-    cosF16 = MathF16.cosF16(angle)
-    sinF16 = MathF16.sinF16(angle)
-    dxF16 = multiplyF16(cosF16, xxxF16) + multiplyF16(-sinF16, var6)
-    dyF16 = multiplyF16(sinF16, xxxF16) + multiplyF16(cosF16, var6)
-    angle = 82354
-    cosF16 = MathF16.cosF16(82354)
-    sinF16 = MathF16.sinF16(angle)
-
-    for (let i = 0; i < 5; ++i) {
-      gameCanvas.drawLineF16(this.motoComponents[2].xF16, this.motoComponents[2].yF16, this.motoComponents[2].xF16 + dxF16, this.motoComponents[2].yF16 + dyF16)
-      const var10 = dxF16
-      dxF16 = multiplyF16(cosF16, dxF16) + multiplyF16(-sinF16, dyF16)
-      dyF16 = multiplyF16(sinF16, var10) + multiplyF16(cosF16, dyF16)
-    }
-
-    if (GamePhysics.curentMotoLeague > 0) {
-      gameCanvas.setColor(255, 0, 0)
-      if (GamePhysics.curentMotoLeague > 2) {
-        gameCanvas.setColor(100, 100, 255)
-      }
-      gameCanvas.drawCircle((this.motoComponents[2].xF16 << 2) >> 16, (this.motoComponents[2].yF16 << 2) >> 16, 4)
-      gameCanvas.drawCircle((this.motoComponents[1].xF16 << 2) >> 16, (this.motoComponents[1].yF16 << 2) >> 16, 4)
-    }
+    const radiusF16 = this.bikeParts[1].collisionRadiusF16
+    const rearThin = GamePhysics.curentMotoLeague < 1
+    const frontThin = GamePhysics.curentMotoLeague < 2
+    const accent = GamePhysics.curentMotoLeague > 2 ? '#5d8dff' : '#c0392b'
+    gameCanvas.drawPremiumWheelF16(this.motoComponents[1].xF16, this.motoComponents[1].yF16, radiusF16, this.motoComponents[1].angleF16, frontThin, accent)
+    gameCanvas.drawPremiumWheelF16(this.motoComponents[2].xF16, this.motoComponents[2].yF16, radiusF16, this.motoComponents[2].angleF16, rearThin, accent)
   }
 
   private renderSmth(gameCanvas: GameCanvas, var2: number, var3: number, var4: number, var5: number): void {
@@ -1114,21 +1100,37 @@ export class GamePhysics {
       }
       gameCanvas.drawHelmet((circleXF16 << 2) >> 16, (circleYF16 << 2) >> 16, var30)
     } else {
-      gameCanvas.setColor(0, 0, 0)
-      gameCanvas.drawLineF16(xF16, yF16, x2F16, y2F16)
-      gameCanvas.drawLineF16(x2F16, y2F16, x3F16, y3F16)
-      gameCanvas.setColor(0, 0, 128)
-      gameCanvas.drawLineF16(x3F16, y3F16, x4F16, y4F16)
-      gameCanvas.drawLineF16(x4F16, y4F16, x5F16, y5F16)
-      gameCanvas.drawLineF16(x5F16, y5F16, x6F16, y6F16)
-      const var30 = 65536
-      gameCanvas.setColor(156, 0, 0)
-      gameCanvas.drawCircle((circleXF16 << 2) >> 16, (circleYF16 << 2) >> 16, ((var30 + var30) << 2) >> 16)
+      const shoulderLeftF16: [number, number] = [x3F16 - multiplyF16(var4, 5734), y3F16 - multiplyF16(var5, 5734)]
+      const shoulderRightF16: [number, number] = [x3F16 + multiplyF16(var4, 5734), y3F16 + multiplyF16(var5, 5734)]
+      const waistF16: [number, number] = [x4F16, y4F16]
+      const hipLeftF16: [number, number] = [x4F16 - multiplyF16(var4, 6553), y4F16 - multiplyF16(var5, 6553)]
+      const hipRightF16: [number, number] = [x4F16 + multiplyF16(var4, 6553), y4F16 + multiplyF16(var5, 6553)]
+      gameCanvas.fillPolygonF16([shoulderLeftF16, shoulderRightF16, waistF16], '#4e6670', '#24353d', 2)
+      gameCanvas.fillPolygonF16([hipLeftF16, hipRightF16, waistF16], '#2e2f33', '#1c1d20', 2)
+      gameCanvas.strokeSegmentF16(xF16, yF16, x2F16, y2F16, 3, '#1f252c')
+      gameCanvas.strokeSegmentF16(x2F16, y2F16, x3F16, y3F16, 3, '#1f252c')
+      gameCanvas.strokeSegmentF16(x4F16, y4F16, x5F16, y5F16, 3.5, '#32363b')
+      gameCanvas.strokeSegmentF16(x5F16, y5F16, x6F16, y6F16, 3.5, '#32363b')
+      gameCanvas.strokeSegmentF16(var14, var15, x6F16, y6F16, 3, '#15171a')
+      gameCanvas.fillCircleF16(x3F16, y3F16, 7373, '#f0cfaf')
+      let helmetAngle = MathF16.atan2F16(var2, var3)
+      if (this.riderPoseBlendF16 > 32768) {
+        helmetAngle += 20588
+      }
+      const visorXF16 = circleXF16 + multiplyF16(MathF16.cosF16(helmetAngle), 32768)
+      const visorYF16 = circleYF16 + multiplyF16(MathF16.sinF16(helmetAngle), 32768)
+      gameCanvas.fillCircleF16(circleXF16, circleYF16, 40960, '#c6d14b', '#2f3a19', 2)
+      gameCanvas.strokeSegmentF16(circleXF16, circleYF16, visorXF16, visorYF16, 3, '#4e5c67')
     }
 
-    gameCanvas.setColor(0, 0, 0)
-    gameCanvas.drawForthSpriteByCenter((x6F16 << 2) >> 16, (y6F16 << 2) >> 16)
-    gameCanvas.drawForthSpriteByCenter((var14 << 2) >> 16, (var15 << 2) >> 16)
+    if (!this.isRenderDriverWithSprites) {
+      gameCanvas.fillCircleF16(x6F16, y6F16, 11468, '#222222')
+      gameCanvas.fillCircleF16(var14, var15, 11468, '#222222')
+    } else {
+      gameCanvas.setColor(0, 0, 0)
+      gameCanvas.drawForthSpriteByCenter((x6F16 << 2) >> 16, (y6F16 << 2) >> 16)
+      gameCanvas.drawForthSpriteByCenter((var14 << 2) >> 16, (var15 << 2) >> 16)
+    }
   }
 
   private renderMotoAsLines(gameCanvas: GameCanvas, var2: number, var3: number, var4: number, var5: number): void {
@@ -1162,26 +1164,57 @@ export class GamePhysics {
     const var34 = var32 + multiplyF16(var5, 32768)
     const var35 = var31 + multiplyF16(var4, 114688) - multiplyF16(var2, 32768)
     const var36 = var32 + multiplyF16(var5, 114688) - multiplyF16(var3, 32768)
-    gameCanvas.setColor(50, 50, 50)
-    gameCanvas.drawCircle((var21 << 2) >> 16, (var22 << 2) >> 16, ((32768 + 32768) << 2) >> 16)
+    const headTubeXF16 = var19
+    const headTubeYF16 = var20
+    const seatTubeXF16 = var17 - multiplyF16(var2, 4915)
+    const seatTubeYF16 = var18 - multiplyF16(var3, 4915)
+    const bbXF16 = var21
+    const bbYF16 = var22
+    const topTubeRearXF16 = seatTubeXF16 - multiplyF16(var4, 2048)
+    const topTubeRearYF16 = seatTubeYF16 - multiplyF16(var5, 2048)
+    const handlebarLeftXF16 = var35 - multiplyF16(var4, 12288)
+    const handlebarLeftYF16 = var36 - multiplyF16(var5, 12288)
+    const handlebarRightXF16 = var35 + multiplyF16(var4, 12288)
+    const handlebarRightYF16 = var36 + multiplyF16(var5, 12288)
+    const saddleFrontXF16 = topTubeRearXF16 + multiplyF16(var2, 5734)
+    const saddleFrontYF16 = topTubeRearYF16 + multiplyF16(var3, 5734)
+    const saddleRearXF16 = topTubeRearXF16 - multiplyF16(var2, 8192)
+    const saddleRearYF16 = topTubeRearYF16 - multiplyF16(var3, 8192)
+    gameCanvas.fillCircleF16(var21, var22, 24576, '#d6d9dd', '#686d73', 1.5)
     if (!this.isCrashed) {
-      gameCanvas.drawLineF16(var9, var10, var17, var18)
-      gameCanvas.drawLineF16(var11, var12, var15, var16)
+      gameCanvas.strokeSegmentF16(var9, var10, seatTubeXF16, seatTubeYF16, 2, '#676e75')
+      gameCanvas.strokeSegmentF16(var11, var12, var15, var16, 2, '#676e75')
     }
 
-    gameCanvas.drawLineF16(var13, var14, var15, var16)
-    gameCanvas.drawLineF16(var13, var14, var31, var32)
-    gameCanvas.drawLineF16(var19, var20, var33, var34)
-    gameCanvas.drawLineF16(var33, var34, var35, var36)
+    gameCanvas.strokeSegmentF16(seatTubeXF16, seatTubeYF16, headTubeXF16, headTubeYF16, 2.6, '#2c7a66')
+    gameCanvas.strokeSegmentF16(seatTubeXF16, seatTubeYF16, bbXF16, bbYF16, 2.6, '#2c7a66')
+    gameCanvas.strokeSegmentF16(headTubeXF16, headTubeYF16, bbXF16, bbYF16, 2.6, '#2c7a66')
+    gameCanvas.strokeSegmentF16(headTubeXF16, headTubeYF16, var25, var26, 2.4, '#2c7a66')
+    gameCanvas.strokeSegmentF16(bbXF16, bbYF16, var27, var28, 2.4, '#2c7a66')
+    gameCanvas.strokeSegmentF16(var19, var20, var33, var34, 2.2, '#bcc3ca')
+    gameCanvas.strokeSegmentF16(var33, var34, var35, var36, 2.2, '#bcc3ca')
+    gameCanvas.strokeSegmentF16(handlebarLeftXF16, handlebarLeftYF16, handlebarRightXF16, handlebarRightYF16, 2, '#1a1d20')
+    gameCanvas.strokeSegmentF16(saddleRearXF16, saddleRearYF16, saddleFrontXF16, saddleFrontYF16, 2, '#1a1d20')
     if (!this.isCrashed) {
-      gameCanvas.drawLineF16(var31, var32, var23, var24)
-      gameCanvas.drawLineF16(var35, var36, var23, var24)
+      gameCanvas.drawCoilShockF16(var31, var32, var23, var24, 1.5, '#aeb4bb')
+      gameCanvas.drawCoilShockF16(var35, var36, var23, var24, 1.5, '#aeb4bb')
     }
 
-    gameCanvas.drawLineF16(var17, var18, var27, var28)
-    gameCanvas.drawLineF16(var19, var20, var25, var26)
-    gameCanvas.drawLineF16(var25, var26, var29, var30)
-    gameCanvas.drawLineF16(var27, var28, var29, var30)
+    gameCanvas.strokeSegmentF16(seatTubeXF16, seatTubeYF16, var27, var28, 2.4, '#2c7a66')
+    gameCanvas.strokeSegmentF16(headTubeXF16, headTubeYF16, var25, var26, 2.4, '#2c7a66')
+    gameCanvas.strokeSegmentF16(var25, var26, var29, var30, 2, '#c8ccd1')
+    gameCanvas.strokeSegmentF16(var27, var28, var29, var30, 2, '#c8ccd1')
+    gameCanvas.fillPolygonF16(
+      [
+        [var15 + multiplyF16(var4, 8192), var16 + multiplyF16(var5, 8192)],
+        [var15 - multiplyF16(var4, 12288), var16 - multiplyF16(var5, 12288)],
+        [var21 - multiplyF16(var2, 8192), var22 - multiplyF16(var3, 8192)],
+        [var21 + multiplyF16(var2, 8192), var22 + multiplyF16(var3, 8192)],
+      ],
+      '#9ea4ab',
+      '#676d75',
+      2,
+    )
   }
 
   renderGame(gameCanvas: GameCanvas): void {
@@ -1214,7 +1247,7 @@ export class GamePhysics {
       this.renderEngine(gameCanvas, xxF16, yyF16)
     }
 
-    if (!Micro.isInGameMenu) {
+    if (!Micro.isInGameMenu && this.isRenderMotoWithSprites) {
       this.renderWheelTires(gameCanvas)
     }
 
