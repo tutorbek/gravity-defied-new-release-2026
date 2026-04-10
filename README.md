@@ -4,7 +4,7 @@
 
 The goal of this project is not to make a normal website around the game. The goal is simple: open the page and immediately play the game in a clean fullscreen desktop experience with sharper graphics, bigger objects, smoother motion, new difficult levels, unlocked content, and upgraded sound.
 
-![Gameplay preview](preview.gif)
+![Gameplay preview](preview.mp4)
 
 ## Preview Video
 
