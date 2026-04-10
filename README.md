@@ -6,7 +6,9 @@ The goal of this project is not to make a normal website around the game. The go
 
 ## Preview Video
 
-<video src="./preview.mp4" controls muted loop playsinline width="100%"></video>
+[![Watch gameplay preview](https://img.youtube.com/vi/bzCIoJn2Jog/maxresdefault.jpg)](https://youtu.be/bzCIoJn2Jog)
+
+Watch the gameplay preview on YouTube: [https://youtu.be/bzCIoJn2Jog](https://youtu.be/bzCIoJn2Jog)
 
 ## What Changed In This Remake
 
