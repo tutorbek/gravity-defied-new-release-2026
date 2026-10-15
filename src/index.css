@@ -31,6 +31,7 @@ body {
 }
 
 .app-root {
+  position: relative;
   width: 100vw;
   height: 100vh;
   background: #0b0b0b;
@@ -45,6 +46,86 @@ body {
   outline: none;
 }
 
+.sponsor-link {
+  position: fixed;
+  top: max(14px, env(safe-area-inset-top));
+  right: max(14px, env(safe-area-inset-right));
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 15px 10px 12px;
+  border: 1px solid rgba(142, 224, 255, 0.7);
+  border-radius: 999px;
+  color: #f8fdff;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.4), transparent 32%),
+    linear-gradient(135deg, rgba(0, 168, 232, 0.95), rgba(12, 94, 187, 0.88) 54%, rgba(12, 30, 50, 0.86));
+  box-shadow:
+    0 10px 30px rgba(0, 132, 210, 0.34),
+    0 0 0 1px rgba(255, 255, 255, 0.12) inset,
+    0 1px 0 rgba(255, 255, 255, 0.38) inset;
+  backdrop-filter: blur(12px) saturate(1.15);
+  -webkit-backdrop-filter: blur(12px) saturate(1.15);
+  font: 900 13px/1 "Avenir Next", "Segoe UI", sans-serif;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  text-transform: uppercase;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  animation: sponsor-float 3.4s ease-in-out infinite;
+}
+
+.sponsor-link:hover {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.82);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.5), transparent 34%),
+    linear-gradient(135deg, rgba(16, 190, 255, 0.98), rgba(20, 116, 220, 0.94) 54%, rgba(9, 42, 78, 0.92));
+  box-shadow:
+    0 12px 36px rgba(0, 153, 245, 0.48),
+    0 0 0 1px rgba(255, 255, 255, 0.2) inset,
+    0 1px 0 rgba(255, 255, 255, 0.46) inset;
+}
+
+.sponsor-link:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.sponsor-link__pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.16), 0 0 14px rgba(255, 255, 255, 0.92);
+  animation: sponsor-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes sponsor-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(2px);
+  }
+}
+
+@keyframes sponsor-pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(0.86);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
 .error-view {
   width: min(100%, 860px);
   margin: 32px auto;
@@ -55,4 +136,87 @@ body {
   border: 1px solid rgba(255, 235, 183, 0.4);
   border-radius: 24px;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.mobile-controls {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: none;
+  pointer-events: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mobile-controls__cluster {
+  position: absolute;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: flex;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.mobile-controls__cluster--lean {
+  left: max(18px, env(safe-area-inset-left));
+}
+
+.mobile-controls__cluster--drive {
+  right: max(18px, env(safe-area-inset-right));
+  flex-direction: column;
+  bottom: max(18px, env(safe-area-inset-bottom));
+}
+
+.mobile-control-button {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 18px;
+  color: rgba(255, 255, 255, 0.88);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.06)),
+    rgba(12, 16, 18, 0.34);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  font: 800 20px/1 "Avenir Next", "Segoe UI", sans-serif;
+  letter-spacing: 0.04em;
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+.mobile-control-button:active,
+.mobile-control-button--pressed {
+  transform: translateY(2px) scale(0.97);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.1)),
+    rgba(6, 12, 14, 0.48);
+}
+
+@media (hover: none), (pointer: coarse) {
+  .mobile-controls {
+    display: block;
+  }
+}
+
+@media (max-width: 760px) {
+  .sponsor-link {
+    top: max(10px, env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right));
+    padding: 9px 12px 9px 10px;
+    font-size: 10px;
+  }
+
+  .mobile-controls__cluster {
+    gap: 10px;
+  }
+
+  .mobile-control-button {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    font-size: 18px;
+  }
 }

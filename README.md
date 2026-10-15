@@ -1,4 +1,4 @@
-# Gravity Defied New Release 2026 Bekzod
+# Gravity Defied New Release 2026
 
 **Gravity Defied New Release 2026** is my desktop-first web remake of the classic Gravity Defied trial racing game.
 
@@ -163,6 +163,14 @@ gravity-defied-new-release-2026/
 ├── vite.config.ts                     # Vite configuration
 └── preview.gif                        # Preview media placeholder
 ```
+// vite.config.js
+export default defineConfig({
+  server: {
+    allowedHosts: [
+      '07a0-2a05-45c2-30b4-6100-b945-373-1c3b-5bc.ngrok-free.app'
+    ]
+  }
+})
 
 ## Tech Stack
 

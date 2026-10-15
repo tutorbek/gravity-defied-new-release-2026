@@ -9,6 +9,7 @@ import { RollingAudio } from './RollingAudio.ts'
 
 type RuntimeOptions = {
   canvasElement: HTMLCanvasElement
+  controlsElement?: HTMLDivElement
   viewportElement: HTMLDivElement
 }
 
@@ -27,7 +28,7 @@ type AppState = {
 const PHYSICS_FRAME_MS = 30
 
 export async function startGameRuntime(options: RuntimeOptions): Promise<() => void> {
-  const { canvasElement, viewportElement } = options
+  const { canvasElement, controlsElement, viewportElement } = options
   const micro = new Micro()
   Micro.isGameVisible = true
 
@@ -348,18 +349,107 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
     canvasElement.focus({ preventScroll: true })
   }
 
+  const activeTouchCounts = new Map<number, number>()
+  const activePointerKeys = new Map<number, number>()
+  const activePointerButtons = new Map<number, HTMLButtonElement>()
+
+  const pressTouchKey = (keyCode: number): void => {
+    activeTouchCounts.set(keyCode, (activeTouchCounts.get(keyCode) ?? 0) + 1)
+    gameCanvas.keyPressed(keyCode)
+    render()
+  }
+
+  const releaseTouchKey = (keyCode: number): void => {
+    const nextCount = (activeTouchCounts.get(keyCode) ?? 1) - 1
+    if (nextCount > 0) {
+      activeTouchCounts.set(keyCode, nextCount)
+      return
+    }
+
+    activeTouchCounts.delete(keyCode)
+    gameCanvas.keyReleased(keyCode)
+    render()
+  }
+
+  const releaseAllTouchKeys = (): void => {
+    for (const keyCode of activeTouchCounts.keys()) {
+      gameCanvas.keyReleased(keyCode)
+    }
+
+    for (const button of activePointerButtons.values()) {
+      button.classList.remove('mobile-control-button--pressed')
+    }
+
+    activeTouchCounts.clear()
+    activePointerKeys.clear()
+    activePointerButtons.clear()
+    render()
+  }
+
+  const handleControlPointerDown = (event: PointerEvent): void => {
+    const button = event.target instanceof HTMLElement ? event.target.closest<HTMLButtonElement>('[data-game-key]') : null
+    if (button === null) {
+      return
+    }
+
+    const keyCode = browserKeyCodeToGameKeyCode(button.dataset.gameKey ?? '')
+    if (keyCode === null) {
+      return
+    }
+
+    event.preventDefault()
+    if (activePointerKeys.has(event.pointerId)) {
+      return
+    }
+
+    void rollingAudio.resume()
+    canvasElement.focus({ preventScroll: true })
+    button.setPointerCapture(event.pointerId)
+    button.classList.add('mobile-control-button--pressed')
+    activePointerKeys.set(event.pointerId, keyCode)
+    activePointerButtons.set(event.pointerId, button)
+    pressTouchKey(keyCode)
+  }
+
+  const handleControlPointerRelease = (event: PointerEvent): void => {
+    const keyCode = activePointerKeys.get(event.pointerId)
+    if (keyCode === undefined) {
+      return
+    }
+
+    event.preventDefault()
+    activePointerKeys.delete(event.pointerId)
+    activePointerButtons.get(event.pointerId)?.classList.remove('mobile-control-button--pressed')
+    activePointerButtons.delete(event.pointerId)
+    releaseTouchKey(keyCode)
+  }
+
   const handleCanvasFocus = (): void => {
     viewportElement.classList.add('app-root--focused')
   }
 
-  const handleCanvasBlur = (): void => {
+  const handleCanvasBlur = (event: FocusEvent): void => {
+    if (controlsElement?.contains(event.relatedTarget as Node | null)) {
+      canvasElement.focus({ preventScroll: true })
+      return
+    }
+
+    releaseAllTouchKeys()
     gameCanvas.resetInputState()
     viewportElement.classList.remove('app-root--focused')
   }
 
   const handleWindowBlur = (): void => {
+    releaseAllTouchKeys()
     gameCanvas.resetInputState()
     viewportElement.classList.remove('app-root--focused')
+  }
+
+  const handleVisibilityChange = (): void => {
+    if (document.visibilityState === 'hidden') {
+      releaseAllTouchKeys()
+      gameCanvas.resetInputState()
+    }
   }
 
   const resizeObserver = new ResizeObserver(() => {
@@ -372,9 +462,14 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
   window.addEventListener('blur', handleWindowBlur)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   canvasElement.addEventListener('pointerdown', handlePointerDown)
   canvasElement.addEventListener('focus', handleCanvasFocus)
   canvasElement.addEventListener('blur', handleCanvasBlur)
+  controlsElement?.addEventListener('pointerdown', handleControlPointerDown)
+  controlsElement?.addEventListener('pointerup', handleControlPointerRelease)
+  controlsElement?.addEventListener('pointercancel', handleControlPointerRelease)
+  controlsElement?.addEventListener('lostpointercapture', handleControlPointerRelease)
 
   gameCanvas.requestRepaint(0)
   restart(false)
@@ -394,9 +489,15 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
     window.removeEventListener('keydown', handleKeyDown)
     window.removeEventListener('keyup', handleKeyUp)
     window.removeEventListener('blur', handleWindowBlur)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
     canvasElement.removeEventListener('pointerdown', handlePointerDown)
     canvasElement.removeEventListener('focus', handleCanvasFocus)
     canvasElement.removeEventListener('blur', handleCanvasBlur)
+    controlsElement?.removeEventListener('pointerdown', handleControlPointerDown)
+    controlsElement?.removeEventListener('pointerup', handleControlPointerRelease)
+    controlsElement?.removeEventListener('pointercancel', handleControlPointerRelease)
+    controlsElement?.removeEventListener('lostpointercapture', handleControlPointerRelease)
+    releaseAllTouchKeys()
     gameCanvas.resetInputState()
     menuManager.saveAndClose()
     rollingAudio.stop()
