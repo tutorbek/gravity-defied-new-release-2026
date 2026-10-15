@@ -21,6 +21,15 @@ export class RollingAudio {
   private motorShape: WaveShaperNode | null = null
   private motorSubOscillator: OscillatorNode | null = null
   private noise: AudioBufferSourceNode | null = null
+  private userMuted = false
+
+  setUserMuted(muted: boolean): void {
+    this.userMuted = muted
+  }
+
+  isUserMuted(): boolean {
+    return this.userMuted
+  }
 
   private createNoiseBuffer(audioContext: AudioContext): AudioBuffer {
     const length = audioContext.sampleRate * 2
@@ -115,13 +124,13 @@ export class RollingAudio {
     const now = this.audioContext.currentTime
     const speed = Math.max(0, Math.min(rollingState.speed, 1))
     const contact = Math.max(0, Math.min(rollingState.contact, 1))
-    const targetGain = isMuted ? 0 : Math.min(0.18, contact * speed * 0.16)
+    const targetGain = isMuted || this.userMuted ? 0 : Math.min(0.18, contact * speed * 0.16)
     const targetFrequency = 70 + Math.max(0, Math.min(rollingState.pitch, 1)) * 260
     const targetQ = 0.6 + speed * 1.2
     const throttle = Math.max(0, Math.min(motorState.throttle, 1))
     const load = Math.max(0, Math.min(motorState.load, 1))
     const motorPitch = Math.max(0, Math.min(motorState.pitch, 1))
-    const motorGain = isMuted ? 0 : Math.min(0.24, (0.035 + throttle * 0.155 + load * 0.075) * (throttle > 0 || load > 0.08 ? 1 : 0))
+    const motorGain = isMuted || this.userMuted ? 0 : Math.min(0.24, (0.035 + throttle * 0.155 + load * 0.075) * (throttle > 0 || load > 0.08 ? 1 : 0))
     const motorFrequency = 38 + motorPitch * 95 + throttle * 24
     const motorFilterFrequency = 460 + motorPitch * 940 + load * 420
 

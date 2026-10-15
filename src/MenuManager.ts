@@ -719,6 +719,17 @@ export class MenuManager implements IMenuManager {
     }
   }
 
+  handlePointerClick(canvasX: number, canvasY: number): boolean {
+    if (this.currentGameMenu !== null) {
+      const handled = this.currentGameMenu.handlePointerClick(canvasX, canvasY)
+      if (handled) {
+        this.repaint()
+        return true
+      }
+    }
+    return false
+  }
+
   handleBackAction(): void {
     if (this.currentGameMenu === null) {
       return
@@ -1066,12 +1077,28 @@ export class MenuManager implements IMenuManager {
     return this.settingStringLevel?.getCurrentOptionPos() ?? 0
   }
 
+  setSelectedLevel(level: number): void {
+    this.settingStringLevel?.setCurrentOptionPos(level)
+  }
+
   getSelectedTrack(): number {
     return this.settingsStringTrack?.getCurrentOptionPos() ?? 0
   }
 
+  setSelectedTrack(track: number): void {
+    this.settingsStringTrack?.setCurrentOptionPos(track)
+  }
+
   getSelectedLeague(): number {
     return this.settingsStringLeague?.getCurrentOptionPos() ?? 0
+  }
+
+  setSelectedLeague(league: number): void {
+    this.settingsStringLeague?.setCurrentOptionPos(league)
+  }
+
+  getRecordManager(): RecordManager | null {
+    return this.recordManager
   }
 
   setFinishTime(var1: number): void {

@@ -891,6 +891,22 @@ export class GameCanvas {
     }
   }
 
+  handleCanvasPointerClick(clientX: number, clientY: number): boolean {
+    if (!Micro.isInGameMenu || this.menuManager === null) {
+      return false
+    }
+
+    const rect = this.canvas.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) {
+      return false
+    }
+
+    const canvasX = ((clientX - rect.left) / rect.width) * this.width
+    const canvasY = ((clientY - rect.top) / rect.height) * this.height
+
+    return this.menuManager.handlePointerClick(canvasX, canvasY)
+  }
+
   keyPressed(var1: number): void {
     if (Micro.isInGameMenu && this.menuManager !== null) {
       this.menuManager.processKeyCode(var1)

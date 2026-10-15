@@ -7,10 +7,20 @@ import LEVELS_MRG_URL from '../assets/levels.mrg?url'
 import { browserKeyCodeToGameKeyCode } from './browserInput.ts'
 import { RollingAudio } from './RollingAudio.ts'
 
+import { RecordManager } from '../RecordManager.ts'
+import {
+  type GameRuntimeController,
+  type GameRuntimeState,
+  type GameUISettings,
+  loadStoredSettings,
+  saveStoredSettings,
+} from '../ui/GameUI.ts'
+
 type RuntimeOptions = {
   canvasElement: HTMLCanvasElement
   controlsElement?: HTMLDivElement
   viewportElement: HTMLDivElement
+  onControllerReady?: (controller: GameRuntimeController) => void
 }
 
 type AppState = {
@@ -106,9 +116,50 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
     gameCanvas.resetInputState()
   }
 
+  function formatGameTime(time10Ms: number): string {
+    const totalSec = Math.trunc(time10Ms / 100)
+    const centisec = Math.trunc(time10Ms % 100)
+    const mins = Math.trunc(totalSec / 60)
+    const secs = totalSec % 60
+    const mStr = mins < 10 ? `0${mins}` : `${mins}`
+    const sStr = secs < 10 ? `0${secs}` : `${secs}`
+    const csStr = centisec < 10 ? `0${centisec}` : `${centisec}`
+    return `${mStr}:${sStr}.${csStr}`
+  }
+
+  const stateListeners = new Set<(state: GameRuntimeState) => void>()
+  const notifyStateChange = (extra?: Partial<GameRuntimeState>): void => {
+    const curLvl = menuManager.getCurrentLevel()
+    const curTrk = menuManager.getCurrentTrack()
+    const curLg = menuManager.getSelectedLeague()
+    const st: GameRuntimeState = {
+      isPaused: Micro.isInGameMenu,
+      isInMenu: Micro.isInGameMenu,
+      isFinished: false,
+      levelIndex: curLvl,
+      trackIndex: curTrk,
+      leagueIndex: curLg,
+      trackName: levelLoader.getName(curLvl, curTrk),
+      leagueName: ['100cc', '175cc', '220cc', '325cc'][curLg] ?? '100cc',
+      difficultyName: ['Oson', 'O‘rtacha', 'Qiyin'][curLvl] ?? 'Oson',
+      ...extra,
+    }
+    for (const listener of stateListeners) {
+      listener(st)
+    }
+  }
+
   function openFinishedMenu(): void {
-    menuManager.setFinishTime(micro.gameTimeMs / 10)
+    const finishTime10Ms = micro.gameTimeMs / 10
+    menuManager.setFinishTime(finishTime10Ms)
+    const curLg = menuManager.getSelectedLeague()
+    const rank = menuManager.getRecordManager()?.getPosOfNewRecord(curLg, finishTime10Ms) ?? 3
     menuManager.showMenuScreen(2)
+    notifyStateChange({
+      isFinished: true,
+      finishTimeStr: formatGameTime(finishTime10Ms),
+      finishRank: rank,
+    })
   }
 
   function startGoalLoop(nowMs: number): void {
@@ -315,7 +366,11 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
     let handled = false
     const keyCode = browserKeyCodeToGameKeyCode(event.code)
 
-    if (event.code === 'Escape') {
+    if (event.code === 'KeyR') {
+      restart(true)
+      handled = true
+      notifyStateChange()
+    } else if (event.code === 'Escape') {
       if (Micro.isInGameMenu) {
         gameCanvas.handleBackAction()
         handled = true
@@ -323,6 +378,7 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
         gameCanvas.openPauseMenu()
         handled = true
       }
+      notifyStateChange()
     }
 
     if (keyCode !== null) {
@@ -344,9 +400,17 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
     }
   }
 
-  const handlePointerDown = (): void => {
+  const handlePointerDown = (event: PointerEvent): void => {
     void rollingAudio.resume()
     canvasElement.focus({ preventScroll: true })
+    if (Micro.isInGameMenu) {
+      const handled = gameCanvas.handleCanvasPointerClick(event.clientX, event.clientY)
+      if (handled) {
+        event.preventDefault()
+        render()
+        notifyStateChange()
+      }
+    }
   }
 
   const activeTouchCounts = new Map<number, number>()
@@ -478,6 +542,175 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
   levelLoader.loadLevel(menuManager.getSelectedLevel(), menuManager.getSelectedTrack())
   gamePhysics.setMotoLeague(menuManager.getSelectedLeague())
   micro.menuToGame()
+
+  const storedSettings = loadStoredSettings()
+  rollingAudio.setUserMuted(!storedSettings.sound)
+  LevelLoader.isEnabledPerspective = storedSettings.perspective
+  LevelLoader.isEnabledShadows = storedSettings.shadows
+  gamePhysics.setEnableLookAhead(storedSettings.lookAhead)
+  const initialSpriteFlags = (storedSettings.bikeSprite ? 1 : 0) | (storedSettings.driverSprite ? 2 : 0)
+  if (initialSpriteFlags !== state.loadedSpriteFlags) {
+    void gameCanvas.loadSprites(initialSpriteFlags).then((loadedFlags) => {
+      gamePhysics.applyLoadedSpriteFlags(loadedFlags)
+      menuManager.applyLoadedSpriteFlags(loadedFlags)
+      state.loadedSpriteFlags = loadedFlags
+      render()
+    })
+  }
+
+  const controller: GameRuntimeController = {
+    startOrResume: () => {
+      micro.menuToGame()
+      render()
+      notifyStateChange()
+    },
+    openMenu: () => {
+      micro.gameToMenu()
+      render()
+      notifyStateChange({ isInMenu: true })
+    },
+    openPause: () => {
+      micro.gameToMenu()
+      render()
+      notifyStateChange({ isPaused: true })
+    },
+    closeMenu: () => {
+      micro.menuToGame()
+      render()
+      notifyStateChange()
+    },
+    restart: () => {
+      restart(true)
+      micro.menuToGame()
+      render()
+      notifyStateChange()
+    },
+    loadNextTrack: () => {
+      const curLvl = menuManager.getCurrentLevel()
+      const curTrk = menuManager.getCurrentTrack()
+      const tracksInLvl = levelLoader.levelNames[curLvl]?.length ?? 10
+      let nextLvl = curLvl
+      let nextTrk = curTrk + 1
+      if (nextTrk >= tracksInLvl) {
+        if (nextLvl < 2) {
+          nextLvl++
+          nextTrk = 0
+        } else {
+          nextTrk = 0
+        }
+      }
+      controller.loadTrack(nextLvl, nextTrk)
+      return true
+    },
+    loadTrack: (levelIndex: number, trackIndex: number) => {
+      levelLoader.loadLevel(levelIndex, trackIndex)
+      gamePhysics.setMotoLeague(menuManager.getSelectedLeague())
+      menuManager.setSelectedLevel(levelIndex)
+      menuManager.setSelectedTrack(trackIndex)
+      menuManager.persistState()
+      restart(true)
+      micro.menuToGame()
+      render()
+      notifyStateChange()
+    },
+    setLeague: (leagueIndex: number) => {
+      gamePhysics.setMotoLeague(leagueIndex)
+      menuManager.setSelectedLeague(leagueIndex)
+      menuManager.persistState()
+      notifyStateChange()
+    },
+    getCurrentLevel: () => menuManager.getCurrentLevel(),
+    getCurrentTrack: () => menuManager.getCurrentTrack(),
+    getCurrentLeague: () => menuManager.getSelectedLeague(),
+    getCurrentTrackName: () => levelLoader.getName(menuManager.getCurrentLevel(), menuManager.getCurrentTrack()),
+    getLevelNames: () => levelLoader.levelNames,
+    getLeagueNames: () => ['100cc', '175cc', '220cc', '325cc'],
+    getLevelDifficultyNames: () => ['Oson (Easy)', 'O‘rtacha (Medium)', 'Qiyin (Pro)'],
+    getRecords: (levelIndex: number, trackIndex: number, leagueIndex: number) => {
+      try {
+        const rm = new RecordManager()
+        rm.openRecordStoreForTrack(levelIndex, trackIndex)
+        const recs = rm.getRecordDescription(leagueIndex)
+        rm.closeRecordStore()
+        return recs
+      } catch {
+        return ['', '', '']
+      }
+    },
+    clearAllRecords: () => {
+      try {
+        const rm = new RecordManager()
+        rm.deleteRecordStores()
+        rm.closeRecordStore()
+        notifyStateChange()
+      } catch (_error) {
+        void _error
+      }
+    },
+    isAudioMuted: () => rollingAudio.isUserMuted(),
+    setAudioMuted: (muted: boolean) => {
+      rollingAudio.setUserMuted(muted)
+      render()
+    },
+    getSettings: () => loadStoredSettings(),
+    updateSetting: <K extends keyof GameUISettings>(key: K, value: GameUISettings[K]) => {
+      const current = loadStoredSettings()
+      current[key] = value
+      saveStoredSettings(current)
+
+      if (key === 'sound') {
+        rollingAudio.setUserMuted(!value)
+      } else if (key === 'perspective') {
+        LevelLoader.isEnabledPerspective = Boolean(value)
+        gamePhysics.applyPerspectiveOffset(Boolean(value))
+      } else if (key === 'shadows') {
+        LevelLoader.isEnabledShadows = Boolean(value)
+      } else if (key === 'lookAhead') {
+        gamePhysics.setEnableLookAhead(Boolean(value))
+      } else if (key === 'bikeSprite' || key === 'driverSprite') {
+        const flags = (current.bikeSprite ? 1 : 0) | (current.driverSprite ? 2 : 0)
+        void gameCanvas.loadSprites(flags).then((loadedFlags) => {
+          gamePhysics.applyLoadedSpriteFlags(loadedFlags)
+          menuManager.applyLoadedSpriteFlags(loadedFlags)
+          state.loadedSpriteFlags = loadedFlags
+          render()
+        })
+      }
+      render()
+    },
+    pressKey: (code: string) => {
+      const kc = browserKeyCodeToGameKeyCode(code)
+      if (kc !== null) {
+        void rollingAudio.resume()
+        pressTouchKey(kc)
+      }
+    },
+    releaseKey: (code: string) => {
+      const kc = browserKeyCodeToGameKeyCode(code)
+      if (kc !== null) {
+        releaseTouchKey(kc)
+      }
+    },
+    onStateChange: (listener) => {
+      stateListeners.add(listener)
+      listener({
+        isPaused: Micro.isInGameMenu,
+        isInMenu: Micro.isInGameMenu,
+        isFinished: false,
+        levelIndex: menuManager.getCurrentLevel(),
+        trackIndex: menuManager.getCurrentTrack(),
+        leagueIndex: menuManager.getSelectedLeague(),
+        trackName: levelLoader.getName(menuManager.getCurrentLevel(), menuManager.getCurrentTrack()),
+        leagueName: ['100cc', '175cc', '220cc', '325cc'][menuManager.getSelectedLeague()] ?? '100cc',
+        difficultyName: ['Oson', 'O‘rtacha', 'Qiyin'][menuManager.getCurrentLevel()] ?? 'Oson',
+      })
+      return () => {
+        stateListeners.delete(listener)
+      }
+    },
+  }
+
+  options.onControllerReady?.(controller)
   animationFrameId = requestAnimationFrame(loop)
 
   return (): void => {

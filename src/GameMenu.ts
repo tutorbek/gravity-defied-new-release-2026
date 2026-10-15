@@ -439,4 +439,40 @@ export class GameMenu {
       }
     }
   }
+
+  handlePointerClick(_canvasX: number, canvasY: number): boolean {
+    if (this.isNameEntryMenu) {
+      return false
+    }
+
+    let var2 = this.topPadding
+    if (this.title !== '') {
+      var2 += this.font.getBaselinePosition() + 2
+    }
+
+    if (this.canvasHeight < 100) {
+      ++var2
+    } else {
+      var2 += 4
+    }
+
+    for (let i = this.firstVisibleIndex; i <= this.lastVisibleIndex && i < this.vector.length; ++i) {
+      const elem = this.vector[i]
+      const itemTop = var2
+      const itemHeight = elem.isNotTextRender()
+        ? this.font2.getBaselinePosition() + this.rowSpacing
+        : (TextRender.getBaselinePosition() < GameCanvas.spriteSizeY[5] ? GameCanvas.spriteSizeY[5] : TextRender.getBaselinePosition()) + this.rowSpacing
+      var2 += itemHeight
+
+      if (canvasY >= itemTop - 2 && canvasY <= var2 + 2) {
+        if (elem.isNotTextRender()) {
+          this.selectedIndex = i
+          elem.menuElemMethod(1)
+          return true
+        }
+      }
+    }
+
+    return false
+  }
 }
