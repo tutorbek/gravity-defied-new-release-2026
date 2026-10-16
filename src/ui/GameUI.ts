@@ -185,12 +185,12 @@ export class GameUI {
     window.addEventListener('selectstart', killSelect, { capture: true, passive: false })
     document.addEventListener('selectstart', killSelect, { capture: true, passive: false })
 
-    // Prevent page scroll and drag gestures everywhere except inside scrollable drawer body
+    // Prevent page scroll and drag gestures everywhere except inside drawer-panel
     document.addEventListener(
       'touchmove',
       (e) => {
         const target = e.target as HTMLElement | null
-        if (target && target.closest('.drawer-body')) {
+        if (target && target.closest('.drawer-panel')) {
           return
         }
         e.preventDefault()
