@@ -162,17 +162,40 @@ export class GameUI {
     window.addEventListener('pointercancel', this.boundGlobalPointerCancel, { passive: false })
     window.addEventListener('blur', this.boundWindowBlur)
     window.addEventListener('contextmenu', this.boundContextMenu, { capture: true, passive: false })
+    document.addEventListener('contextmenu', this.boundContextMenu, { capture: true, passive: false })
     document.addEventListener('visibilitychange', this.boundWindowBlur)
 
+    // Globally prevent dragstart to kill mobile Chrome touch-drag-to-share targets
+    const killDrag = (e: DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      return false
+    }
+    window.addEventListener('dragstart', killDrag, { capture: true, passive: false })
+    document.addEventListener('dragstart', killDrag, { capture: true, passive: false })
+
     // Globally suppress text selection and callouts
+    const killSelect = (e: Event) => {
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+      e.preventDefault()
+      e.stopPropagation()
+      return false
+    }
+    window.addEventListener('selectstart', killSelect, { capture: true, passive: false })
+    document.addEventListener('selectstart', killSelect, { capture: true, passive: false })
+
+    // Prevent page scroll and drag gestures everywhere except inside scrollable drawer body
     document.addEventListener(
-      'selectstart',
+      'touchmove',
       (e) => {
         const target = e.target as HTMLElement | null
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+        if (target && target.closest('.drawer-body')) {
+          return
+        }
         e.preventDefault()
       },
-      { capture: true, passive: false },
+      { passive: false },
     )
 
     document.addEventListener('selectionchange', () => {
@@ -231,7 +254,6 @@ export class GameUI {
     burgerBtn.type = 'button'
     burgerBtn.className = 'hud-btn hud-btn--burger'
     burgerBtn.setAttribute('aria-label', 'Menyuni ochish')
-    burgerBtn.title = 'Menyu'
     burgerBtn.innerHTML = `
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <line x1="4" y1="7" x2="20" y2="7"/>
@@ -271,7 +293,6 @@ export class GameUI {
     restartBtn.type = 'button'
     restartBtn.className = 'hud-btn hud-btn--restart'
     restartBtn.setAttribute('aria-label', 'Trassani qayta boshlash')
-    restartBtn.title = 'Qayta (R)'
     restartBtn.innerHTML = `
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
@@ -363,6 +384,41 @@ export class GameUI {
     rightCluster.append(brakeBtn, gasBtn)
     bottomControls.append(leftCluster, rightCluster)
 
+    // Thoroughly block native touch gestures on bottom control areas
+    const preventAllNativeGestures = (el: HTMLElement) => {
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        return false
+      }, { capture: true })
+
+      el.addEventListener('selectstart', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        return false
+      }, { capture: true })
+
+      el.addEventListener('dragstart', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        return false
+      }, { capture: true })
+
+      el.addEventListener('touchstart', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }, { passive: false })
+
+      el.addEventListener('touchmove', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }, { passive: false })
+    }
+
+    preventAllNativeGestures(leftCluster)
+    preventAllNativeGestures(rightCluster)
+    preventAllNativeGestures(bottomControls)
+
     hud.append(topBar, bottomControls)
     return hud
   }
@@ -383,7 +439,7 @@ export class GameUI {
     // Pure button without text to prevent selection / share callouts completely
     btn.innerHTML = `<div class="control-btn__icon">${iconSvg}</div>`
 
-    // Completely prevent context menu, callout, and text selection
+    // Completely prevent context menu, callout, drag, and text selection
     btn.addEventListener('contextmenu', (e) => {
       e.preventDefault()
       e.stopPropagation()
@@ -392,12 +448,35 @@ export class GameUI {
 
     btn.addEventListener('selectstart', (e) => {
       e.preventDefault()
+      e.stopPropagation()
       return false
     }, { capture: true })
 
-    // On iOS Safari, touchstart preventDefault blocks native magnifier and callout menu (Share, Copy, etc.)
+    btn.addEventListener('dragstart', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      return false
+    }, { capture: true })
+
+    // On mobile touch devices, block all native gestures (long-press share, scroll, magnifier)
     btn.addEventListener('touchstart', (e) => {
       e.preventDefault()
+      e.stopPropagation()
+    }, { passive: false })
+
+    btn.addEventListener('touchmove', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+    }, { passive: false })
+
+    btn.addEventListener('touchend', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+    }, { passive: false })
+
+    btn.addEventListener('touchcancel', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
     }, { passive: false })
 
     const press = (pointerId: number) => {

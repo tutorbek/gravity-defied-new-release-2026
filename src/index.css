@@ -16,8 +16,12 @@
   padding: 0;
   -webkit-touch-callout: none !important;
   -webkit-user-select: none !important;
+  -khtml-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
   user-select: none !important;
   -webkit-tap-highlight-color: transparent !important;
+  -webkit-user-drag: none !important;
 }
 
 html,
@@ -27,9 +31,14 @@ body {
   height: 100dvh;
   overflow: hidden;
   position: fixed;
-  overscroll-behavior: none;
-  touch-action: none;
+  overscroll-behavior: none !important;
+  overscroll-behavior-x: none !important;
+  overscroll-behavior-y: none !important;
+  touch-action: none !important;
   background: #f8fafc;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
 }
 
 #root {
@@ -38,6 +47,7 @@ body {
   overflow: hidden;
   position: relative;
   background: #f8fafc;
+  touch-action: none !important;
 }
 
 .app-root {
@@ -46,6 +56,7 @@ body {
   height: 100dvh;
   background: #f8fafc;
   overflow: hidden;
+  touch-action: none !important;
 }
 
 .game-canvas {
@@ -53,8 +64,12 @@ body {
   height: 100%;
   display: block;
   background: #f8fafc;
-  touch-action: none;
+  touch-action: none !important;
   outline: none;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-drag: none !important;
 }
 
 /* ==========================================================================
@@ -200,8 +215,8 @@ body {
   touch-action: none !important;
   user-select: none !important;
   -webkit-user-select: none !important;
-  -webkit-touch-callout: none !important;
   -webkit-user-drag: none !important;
+  user-drag: none !important;
   transition: transform 0.08s ease, background 0.08s ease, border-color 0.08s ease, box-shadow 0.08s ease;
 }
 
@@ -209,18 +224,23 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: none;
+  pointer-events: none !important;
   user-select: none !important;
   -webkit-user-select: none !important;
   -webkit-touch-callout: none !important;
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
 }
 
-.control-btn__icon svg {
+.control-btn__icon svg,
+.control-btn__icon svg * {
   display: block;
-  pointer-events: none;
+  pointer-events: none !important;
   user-select: none !important;
   -webkit-user-select: none !important;
   -webkit-touch-callout: none !important;
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
 }
 
 .control-btn:active,
