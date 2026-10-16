@@ -95,6 +95,9 @@ export class GameUI {
   private container: HTMLDivElement | null = null
   private hudElement: HTMLDivElement | null = null
   private drawerElement: HTMLDivElement | null = null
+  private drawerPanelElement: HTMLDivElement | null = null
+  private drawerNavElement: HTMLDivElement | null = null
+  private drawerBodyElement: HTMLDivElement | null = null
   private finishDialogElement: HTMLDivElement | null = null
   private pauseDialogElement: HTMLDivElement | null = null
   private confirmDialogElement: HTMLDivElement | null = null
@@ -467,8 +470,8 @@ export class GameUI {
       this.closeFinishedModal()
     }
 
-    if (this.drawerElement) {
-      this.renderDrawerContent()
+    if (this.drawerElement && this.drawerPanelElement && this.drawerBodyElement && this.drawerNavElement) {
+      this.updateDrawerContent()
       return
     }
 
@@ -477,7 +480,7 @@ export class GameUI {
     overlay.setAttribute('role', 'dialog')
     overlay.setAttribute('aria-modal', 'true')
 
-    // Close when clicking outside drawer
+    // Close when clicking directly on the overlay backdrop
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
         this.triggerHaptic()
@@ -485,26 +488,11 @@ export class GameUI {
       }
     })
 
-    this.drawerElement = overlay
-    this.renderDrawerContent()
-    this.container?.appendChild(overlay)
-    this.controller.openMenu()
-  }
-
-  closeDrawer(): void {
-    if (this.drawerElement) {
-      this.drawerElement.remove()
-      this.drawerElement = null
-    }
-    this.controller.closeMenu()
-  }
-
-  private renderDrawerContent(): void {
-    if (!this.drawerElement) return
-    this.drawerElement.innerHTML = ''
-
     const drawer = document.createElement('div')
     drawer.className = 'drawer-panel'
+    drawer.addEventListener('click', (e) => {
+      e.stopPropagation()
+    })
 
     // Drawer Header
     const header = document.createElement('div')
@@ -527,7 +515,8 @@ export class GameUI {
         <line x1="6" y1="6" x2="18" y2="18"/>
       </svg>
     `
-    closeBtn.addEventListener('click', () => {
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
       this.triggerHaptic()
       this.closeDrawer()
     })
@@ -545,32 +534,24 @@ export class GameUI {
       { id: 'controls', label: 'Boshqaruv' },
     ]
 
-    for (const tab of tabs) {
+    for (const tabItem of tabs) {
       const tabBtn = document.createElement('button')
       tabBtn.type = 'button'
-      tabBtn.className = `drawer-tab ${this.activeTab === tab.id ? 'is-active' : ''}`
-      tabBtn.textContent = tab.label
-      tabBtn.addEventListener('click', () => {
+      tabBtn.className = `drawer-tab ${this.activeTab === tabItem.id ? 'is-active' : ''}`
+      tabBtn.dataset.tabId = tabItem.id
+      tabBtn.textContent = tabItem.label
+      tabBtn.addEventListener('click', (e) => {
+        e.stopPropagation()
         this.triggerHaptic()
-        this.activeTab = tab.id
-        this.renderDrawerContent()
+        this.activeTab = tabItem.id
+        this.updateDrawerContent()
       })
       nav.appendChild(tabBtn)
     }
 
-    // Body content according to tab
+    // Scrollable drawer body
     const body = document.createElement('div')
     body.className = 'drawer-body'
-
-    if (this.activeTab === 'tracks') {
-      body.appendChild(this.renderTracksTab())
-    } else if (this.activeTab === 'settings') {
-      body.appendChild(this.renderSettingsTab())
-    } else if (this.activeTab === 'records') {
-      body.appendChild(this.renderRecordsTab())
-    } else if (this.activeTab === 'controls') {
-      body.appendChild(this.renderControlsTab())
-    }
 
     // Footer with sponsor link
     const footer = document.createElement('div')
@@ -583,7 +564,54 @@ export class GameUI {
     `
 
     drawer.append(header, nav, body, footer)
-    this.drawerElement.appendChild(drawer)
+    overlay.appendChild(drawer)
+
+    this.drawerElement = overlay
+    this.drawerPanelElement = drawer
+    this.drawerNavElement = nav
+    this.drawerBodyElement = body
+
+    this.container?.appendChild(overlay)
+    this.updateDrawerContent()
+    this.controller.openMenu()
+  }
+
+  closeDrawer(): void {
+    if (this.drawerElement) {
+      this.drawerElement.remove()
+      this.drawerElement = null
+      this.drawerPanelElement = null
+      this.drawerNavElement = null
+      this.drawerBodyElement = null
+    }
+    this.controller.closeMenu()
+  }
+
+  private updateDrawerContent(): void {
+    if (!this.drawerBodyElement || !this.drawerNavElement) return
+
+    // Update active tab buttons without recreating DOM
+    const tabButtons = this.drawerNavElement.querySelectorAll<HTMLButtonElement>('.drawer-tab')
+    tabButtons.forEach((btn) => {
+      const tabId = btn.dataset.tabId
+      if (tabId === this.activeTab) {
+        btn.classList.add('is-active')
+      } else {
+        btn.classList.remove('is-active')
+      }
+    })
+
+    // Update body content smoothly
+    this.drawerBodyElement.innerHTML = ''
+    if (this.activeTab === 'tracks') {
+      this.drawerBodyElement.appendChild(this.renderTracksTab())
+    } else if (this.activeTab === 'settings') {
+      this.drawerBodyElement.appendChild(this.renderSettingsTab())
+    } else if (this.activeTab === 'records') {
+      this.drawerBodyElement.appendChild(this.renderRecordsTab())
+    } else if (this.activeTab === 'controls') {
+      this.drawerBodyElement.appendChild(this.renderControlsTab())
+    }
   }
 
   // ==========================================
@@ -616,10 +644,11 @@ export class GameUI {
       btn.type = 'button'
       btn.className = `segmented-item ${this.selectedLevelTab === diff.id ? 'is-active' : ''}`
       btn.textContent = diff.label
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation()
         this.triggerHaptic()
         this.selectedLevelTab = diff.id
-        this.renderDrawerContent()
+        this.updateDrawerContent()
       })
       diffRow.appendChild(btn)
     }
@@ -642,11 +671,12 @@ export class GameUI {
       btn.type = 'button'
       btn.className = `segmented-item ${this.selectedLeagueTab === idx ? 'is-active' : ''}`
       btn.textContent = name
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation()
         this.triggerHaptic()
         this.selectedLeagueTab = idx
         this.controller.setLeague(idx)
-        this.renderDrawerContent()
+        this.updateDrawerContent()
       })
       bikeRow.appendChild(btn)
     })
@@ -685,7 +715,8 @@ export class GameUI {
         ${isCurrent ? '<div class="track-item__dot"></div>' : ''}
       `
 
-      card.addEventListener('click', () => {
+      card.addEventListener('click', (e) => {
+        e.stopPropagation()
         this.triggerHaptic()
         this.controller.setLeague(this.selectedLeagueTab)
         this.controller.loadTrack(this.selectedLevelTab, trackIdx)
@@ -705,7 +736,8 @@ export class GameUI {
     playBtn.type = 'button'
     playBtn.className = 'btn-minimal btn-minimal--primary'
     playBtn.textContent = 'Davom ettirish'
-    playBtn.addEventListener('click', () => {
+    playBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
       this.triggerHaptic()
       this.closeDrawer()
     })
@@ -714,7 +746,8 @@ export class GameUI {
     restartBtn.type = 'button'
     restartBtn.className = 'btn-minimal btn-minimal--secondary'
     restartBtn.textContent = 'Qayta boshlash'
-    restartBtn.addEventListener('click', () => {
+    restartBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
       this.triggerHaptic()
       this.controller.restart()
       this.closeDrawer()
@@ -808,11 +841,12 @@ export class GameUI {
       btn.type = 'button'
       btn.className = `segmented-item ${settings.controlsMode === m.id ? 'is-active' : ''}`
       btn.textContent = m.label
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation()
         this.triggerHaptic()
         this.controller.updateSetting('controlsMode', m.id)
         this.updateHudVisibility()
-        this.renderDrawerContent()
+        this.updateDrawerContent()
       })
       modePicker.appendChild(btn)
     }
@@ -825,14 +859,15 @@ export class GameUI {
     clearBtn.type = 'button'
     clearBtn.className = 'btn-minimal btn-minimal--danger'
     clearBtn.textContent = 'Barcha rekordlarni tozalash'
-    clearBtn.addEventListener('click', () => {
+    clearBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
       this.triggerHaptic()
       this.showConfirmDialog(
         'Barcha rekordlarni tozalash',
         'Barcha o‘rnatilgan vaqt natijalari o‘chib ketadi. Buni tasdiqlaysizmi?',
         () => {
           this.controller.clearAllRecords()
-          this.renderDrawerContent()
+          this.updateDrawerContent()
         },
       )
     })
