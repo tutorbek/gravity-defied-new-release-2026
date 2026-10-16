@@ -102,7 +102,7 @@ export class GameUI {
   private pauseDialogElement: HTMLDivElement | null = null
   private confirmDialogElement: HTMLDivElement | null = null
 
-  private activeTab: 'tracks' | 'settings' | 'records' | 'controls' = 'tracks'
+  private activeTab: 'tracks' | 'settings' = 'tracks'
   private selectedLevelTab = 0
   private selectedLeagueTab = 0
 
@@ -533,7 +533,7 @@ export class GameUI {
   // BURGER MENU DRAWER (SLIDE-OUT MODERN DRAWER)
   // ==========================================
 
-  openDrawer(tab: 'tracks' | 'settings' | 'records' | 'controls' = 'tracks'): void {
+  openDrawer(tab: 'tracks' | 'settings' = 'tracks'): void {
     this.releaseAllKeys()
     this.activeTab = tab
     this.selectedLevelTab = this.controller.getCurrentLevel()
@@ -603,11 +603,9 @@ export class GameUI {
     const nav = document.createElement('div')
     nav.className = 'drawer-nav'
 
-    const tabs: Array<{ id: 'tracks' | 'settings' | 'records' | 'controls'; label: string }> = [
+    const tabs: Array<{ id: 'tracks' | 'settings'; label: string }> = [
       { id: 'tracks', label: 'Trassalar' },
       { id: 'settings', label: 'Sozlamalar' },
-      { id: 'records', label: 'Rekordlar' },
-      { id: 'controls', label: 'Boshqaruv' },
     ]
 
     for (const tabItem of tabs) {
@@ -683,10 +681,6 @@ export class GameUI {
       this.drawerBodyElement.appendChild(this.renderTracksTab())
     } else if (this.activeTab === 'settings') {
       this.drawerBodyElement.appendChild(this.renderSettingsTab())
-    } else if (this.activeTab === 'records') {
-      this.drawerBodyElement.appendChild(this.renderRecordsTab())
-    } else if (this.activeTab === 'controls') {
-      this.drawerBodyElement.appendChild(this.renderControlsTab())
     }
   }
 
@@ -985,138 +979,6 @@ export class GameUI {
     switchLabel.append(checkbox, slider)
     row.append(meta, switchLabel)
     return row
-  }
-
-  // ==========================================
-  // TAB 3: REKORDLAR (HIGHSCORES)
-  // ==========================================
-
-  private renderRecordsTab(): HTMLElement {
-    const container = document.createElement('div')
-    container.className = 'tab-content tab-records'
-
-    const currentLvl = this.selectedLevelTab
-    const currentTrk = this.controller.getCurrentTrack()
-    const currentLeague = this.selectedLeagueTab
-
-    const trackName = this.controller.getLevelNames()[currentLvl]?.[currentTrk] ?? 'Intro'
-    const leagueName = this.controller.getLeagueNames()[currentLeague] ?? '100cc'
-    const diffName = this.controller.getLevelDifficultyNames()[currentLvl] ?? 'Oson'
-
-    const header = document.createElement('div')
-    header.className = 'records-box'
-    header.innerHTML = `
-      <div class="records-box__title">${diffName.toUpperCase()} · ${trackName.toUpperCase()}</div>
-      <div class="records-box__sub">Motosikl: ${leagueName}</div>
-    `
-
-    const records = this.controller.getRecords(currentLvl, currentTrk, currentLeague)
-
-    const list = document.createElement('div')
-    list.className = 'records-simple-list'
-
-    let hasAny = false
-    const rankLabels = ['1-o‘rin', '2-o‘rin', '3-o‘rin']
-
-    rankLabels.forEach((label, idx) => {
-      const rec = records[idx]
-      const row = document.createElement('div')
-      row.className = 'record-simple-item'
-
-      if (rec && rec.trim() !== '') {
-        hasAny = true
-        row.innerHTML = `
-          <div class="record-simple-item__rank">${label}</div>
-          <div class="record-simple-item__val">${rec}</div>
-        `
-      } else {
-        row.innerHTML = `
-          <div class="record-simple-item__rank">${label}</div>
-          <div class="record-simple-item__val record-simple-item__val--none">—</div>
-        `
-      }
-      list.appendChild(row)
-    })
-
-    container.append(header, list)
-
-    if (!hasAny) {
-      const emptyNote = document.createElement('div')
-      emptyNote.className = 'panel-note'
-      emptyNote.textContent = 'Ushbu trassada hozircha rekord mavjud emas.'
-      container.appendChild(emptyNote)
-    }
-
-    return container
-  }
-
-  // ==========================================
-  // TAB 4: BOSHQARUV (CONTROLS)
-  // ==========================================
-
-  private renderControlsTab(): HTMLElement {
-    const container = document.createElement('div')
-    container.className = 'tab-content tab-controls'
-
-    container.innerHTML = `
-      <div class="panel-section">
-        <div class="panel-section-title">Mobil boshqaruv</div>
-        <div class="control-guide-grid">
-          <div class="guide-row">
-            <span class="guide-tag">GAZ</span>
-            <span>Oldinga harakat va tezlanish berish</span>
-          </div>
-          <div class="guide-row">
-            <span class="guide-tag">TORMOZ</span>
-            <span>To‘xtatish va orqaga qaytish</span>
-          </div>
-          <div class="guide-row">
-            <span class="guide-tag">ORQAGA</span>
-            <span>Motosiklni orqaga burish</span>
-          </div>
-          <div class="guide-row">
-            <span class="guide-tag">OLDINGA</span>
-            <span>Motosiklni oldinga burish</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel-section">
-        <div class="panel-section-title">Klaviatura boshqaruvi</div>
-        <div class="control-guide-grid">
-          <div class="guide-row">
-            <span class="guide-tag">W / ↑</span>
-            <span>Gaz</span>
-          </div>
-          <div class="guide-row">
-            <span class="guide-tag">S / ↓</span>
-            <span>Tormoz</span>
-          </div>
-          <div class="guide-row">
-            <span class="guide-tag">A / ←</span>
-            <span>Orqaga og‘ish</span>
-          </div>
-          <div class="guide-row">
-            <span class="guide-tag">D / →</span>
-            <span>Oldinga og‘ish</span>
-          </div>
-          <div class="guide-row">
-            <span class="guide-tag">R</span>
-            <span>Tezkor qayta boshlash</span>
-          </div>
-          <div class="guide-row">
-            <span class="guide-tag">Esc</span>
-            <span>Menyu</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel-note">
-        Sakrashdan so‘ng yerga ikkala g‘ildirak bilan baravar qo‘nish ag‘darilib ketmaslikni ta’minlaydi.
-      </div>
-    `
-
-    return container
   }
 
   // ==========================================

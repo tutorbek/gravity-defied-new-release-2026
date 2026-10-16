@@ -676,60 +676,6 @@ body {
   transform: translateX(20px);
 }
 
-/* Records List */
-.records-box {
-  padding: 12px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 12px;
-}
-
-.records-box__title {
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  color: #f1f5f9;
-}
-
-.records-box__sub {
-  font-size: 11px;
-  color: #64748b;
-  margin-top: 2px;
-}
-
-.records-simple-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.record-simple-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
-}
-
-.record-simple-item__rank {
-  font-size: 12px;
-  font-weight: 700;
-  color: #94a3b8;
-}
-
-.record-simple-item__val {
-  font-size: 13px;
-  font-weight: 700;
-  font-family: ui-monospace, SFMono-Regular, monospace;
-  color: #f8fafc;
-}
-
-.record-simple-item__val--none {
-  color: #475569;
-}
-
 .panel-note {
   font-size: 11px;
   line-height: 1.5;
@@ -738,35 +684,6 @@ body {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.04);
-}
-
-/* Controls Guide */
-.control-guide-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.guide-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-.guide-tag {
-  display: inline-block;
-  min-width: 68px;
-  text-align: center;
-  padding: 3px 6px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 10px;
-  font-weight: 800;
-  color: #f1f5f9;
-  font-family: ui-monospace, SFMono-Regular, monospace;
 }
 
 /* Drawer Footer */
