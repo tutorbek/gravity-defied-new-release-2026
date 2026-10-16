@@ -164,6 +164,24 @@ export class GameUI {
     window.addEventListener('contextmenu', this.boundContextMenu, { capture: true, passive: false })
     document.addEventListener('visibilitychange', this.boundWindowBlur)
 
+    // Globally suppress text selection and callouts
+    document.addEventListener(
+      'selectstart',
+      (e) => {
+        const target = e.target as HTMLElement | null
+        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+        e.preventDefault()
+      },
+      { capture: true, passive: false },
+    )
+
+    document.addEventListener('selectionchange', () => {
+      const sel = window.getSelection()
+      if (sel && !sel.isCollapsed) {
+        sel.removeAllRanges()
+      }
+    })
+
     this.updateHudVisibility()
     this.updateHudInfo()
   }
@@ -282,10 +300,25 @@ export class GameUI {
       this.updateSoundButtonHtml(soundBtn)
     })
 
+    const preventCallout = (el: HTMLElement) => {
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+      }, { capture: true })
+      el.addEventListener('selectstart', (e) => {
+        e.preventDefault()
+      }, { capture: true })
+    }
+
+    preventCallout(burgerBtn)
+    preventCallout(trackBadge)
+    preventCallout(restartBtn)
+    preventCallout(soundBtn)
+
     rightGroup.append(restartBtn, soundBtn)
     topBar.append(burgerBtn, trackBadge, rightGroup)
 
-    // Bottom Controls: Clean, Minimalist, Tactile
+    // Bottom Controls: Clean, Minimalist, Pure Tactile Buttons
     const bottomControls = document.createElement('div')
     bottomControls.className = 'game-hud__bottom'
 
@@ -294,18 +327,18 @@ export class GameUI {
     leftCluster.className = 'game-hud__cluster game-hud__cluster--lean'
 
     const leanBackBtn = this.createControlButton('KeyA', 'control-btn--lean', 'Orqaga og‘ish (A)', `
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <line x1="19" y1="12" x2="5" y2="12"/>
         <polyline points="12 19 5 12 12 5"/>
       </svg>
-    `, 'ORQAGA')
+    `)
 
     const leanForwardBtn = this.createControlButton('KeyD', 'control-btn--lean', 'Oldinga og‘ish (D)', `
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <line x1="5" y1="12" x2="19" y2="12"/>
         <polyline points="12 5 19 12 12 19"/>
       </svg>
-    `, 'OLDINGA')
+    `)
 
     leftCluster.append(leanBackBtn, leanForwardBtn)
 
@@ -314,18 +347,18 @@ export class GameUI {
     rightCluster.className = 'game-hud__cluster game-hud__cluster--drive'
 
     const brakeBtn = this.createControlButton('KeyS', 'control-btn--brake', 'Tormoz (S)', `
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="5" x2="12" y2="19"/>
         <polyline points="19 12 12 19 5 12"/>
       </svg>
-    `, 'TORMOZ')
+    `)
 
     const gasBtn = this.createControlButton('KeyW', 'control-btn--gas', 'Gaz (W)', `
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <line x1="12" y1="19" x2="12" y2="5"/>
         <polyline points="5 12 12 5 19 12"/>
       </svg>
-    `, 'GAZ')
+    `)
 
     rightCluster.append(brakeBtn, gasBtn)
     bottomControls.append(leftCluster, rightCluster)
@@ -339,7 +372,6 @@ export class GameUI {
     extraClass: string,
     ariaLabel: string,
     iconSvg: string,
-    textLabel: string,
   ): HTMLButtonElement {
     const btn = document.createElement('button')
     btn.type = 'button'
@@ -348,24 +380,46 @@ export class GameUI {
     btn.setAttribute('aria-label', ariaLabel)
     btn.setAttribute('draggable', 'false')
 
-    btn.innerHTML = `
-      <div class="control-btn__icon">${iconSvg}</div>
-      <div class="control-btn__label">${textLabel}</div>
-    `
+    // Pure button without text to prevent selection / share callouts completely
+    btn.innerHTML = `<div class="control-btn__icon">${iconSvg}</div>`
 
-    // Prevent text selection, contextmenu, and long press callouts completely
-    btn.addEventListener('contextmenu', (e) => e.preventDefault())
-    btn.addEventListener('selectstart', (e) => e.preventDefault())
+    // Completely prevent context menu, callout, and text selection
+    btn.addEventListener('contextmenu', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      return false
+    }, { capture: true })
+
+    btn.addEventListener('selectstart', (e) => {
+      e.preventDefault()
+      return false
+    }, { capture: true })
+
+    // On iOS Safari, touchstart preventDefault blocks native magnifier and callout menu (Share, Copy, etc.)
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault()
+    }, { passive: false })
+
+    const press = (pointerId: number) => {
+      if (this.activePointers.has(pointerId)) return
+
+      this.triggerHaptic()
+      btn.classList.add('is-active')
+      this.activePointers.set(pointerId, { button: btn, key })
+      this.controller.pressKey(key)
+    }
+
+    const release = (pointerId: number) => {
+      if (this.activePointers.has(pointerId)) {
+        this.activePointers.delete(pointerId)
+        btn.classList.remove('is-active')
+        this.controller.releaseKey(key)
+      }
+    }
 
     btn.addEventListener('pointerdown', (e: PointerEvent) => {
       e.preventDefault()
       e.stopPropagation()
-
-      if (this.activePointers.has(e.pointerId)) return
-
-      this.triggerHaptic()
-      btn.classList.add('is-active')
-      this.activePointers.set(e.pointerId, { button: btn, key })
 
       try {
         btn.setPointerCapture(e.pointerId)
@@ -373,8 +427,30 @@ export class GameUI {
         void _err
       }
 
-      this.controller.pressKey(key)
+      press(e.pointerId)
     }, { passive: false })
+
+    btn.addEventListener('pointerup', (e: PointerEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      release(e.pointerId)
+    }, { passive: false })
+
+    btn.addEventListener('pointercancel', (e: PointerEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      release(e.pointerId)
+    }, { passive: false })
+
+    btn.addEventListener('lostpointercapture', (e: PointerEvent) => {
+      release(e.pointerId)
+    })
+
+    btn.addEventListener('pointerleave', (e: PointerEvent) => {
+      if (!btn.hasPointerCapture || !btn.hasPointerCapture(e.pointerId)) {
+        release(e.pointerId)
+      }
+    })
 
     return btn
   }
