@@ -631,9 +631,9 @@ export class GameUI {
     const footer = document.createElement('div')
     footer.className = 'drawer-footer'
     footer.innerHTML = `
-      <a class="drawer-sponsor" href="https://t.me/tutorbek" target="_blank" rel="noopener noreferrer">
+      <a class="drawer-sponsor" href="https://t.me/bkzd19" target="_blank" rel="noopener noreferrer">
         <span class="drawer-sponsor__dot"></span>
-        <span>Powered by tutorbek</span>
+        <span>Powered by bkzd</span>
       </a>
     `
 
