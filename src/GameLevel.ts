@@ -161,7 +161,7 @@ export class GameLevel {
     let var11 = GamePhysics.getSmthLikeMaxAbs(var9, var10)
     var9 = divideF16(var9, var11 >> 1 >> 1)
     var10 = divideF16(var10, var11 >> 1 >> 1)
-    gameCanvas.setColor(0, 170, 0)
+    gameCanvas.setColor(18, 148, 56)
 
     while (lineNo < this.pointsCount - 1) {
       const var4 = var9
@@ -201,7 +201,7 @@ export class GameLevel {
           ((this.pointPositions[this.startFlagPoint][0] + var4) << 3) >> 16,
           ((this.pointPositions[this.startFlagPoint][1] + var5) << 3) >> 16,
         )
-        gameCanvas.setColor(0, 170, 0)
+        gameCanvas.setColor(18, 148, 56)
       }
 
       if (this.finishFlagPoint === lineNo) {
@@ -209,7 +209,7 @@ export class GameLevel {
           ((this.pointPositions[this.finishFlagPoint][0] + var4) << 3) >> 16,
           ((this.pointPositions[this.finishFlagPoint][1] + var5) << 3) >> 16,
         )
-        gameCanvas.setColor(0, 170, 0)
+        gameCanvas.setColor(18, 148, 56)
       }
 
       if (this.pointPositions[lineNo][0] > this.maxX) {
@@ -248,20 +248,20 @@ export class GameLevel {
         (this.pointPositions[pointNo + 1][1] << 3) >> 16,
       )
 
-      if (this.startFlagPoint === pointNo) {
+      if (!LevelLoader.isEnabledPerspective && this.startFlagPoint === pointNo) {
         gameCanvas.renderStartFlag(
           (this.pointPositions[this.startFlagPoint][0] << 3) >> 16,
           (this.pointPositions[this.startFlagPoint][1] << 3) >> 16,
         )
-        gameCanvas.setColor(0, 255, 0)
+        gameCanvas.setColor(15, 175, 45)
       }
 
-      if (this.finishFlagPoint === pointNo) {
+      if (!LevelLoader.isEnabledPerspective && this.finishFlagPoint === pointNo) {
         gameCanvas.renderFinishFlag(
           (this.pointPositions[this.finishFlagPoint][0] << 3) >> 16,
           (this.pointPositions[this.finishFlagPoint][1] << 3) >> 16,
         )
-        gameCanvas.setColor(0, 255, 0)
+        gameCanvas.setColor(15, 175, 45)
       }
 
       if (this.pointPositions[pointNo][0] > this.maxX) {

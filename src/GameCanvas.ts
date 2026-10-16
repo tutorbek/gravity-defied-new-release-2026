@@ -189,8 +189,12 @@ export class GameCanvas {
     void this.loadingScreenMode
     this.ctx.setTransform(this.pixelRatio * this.renderZoom, 0, 0, this.pixelRatio * this.renderZoom, 0, 0)
     this.ctx.clearRect(0, 0, this.width, this.height)
-    this.ctx.lineWidth = 1.35
+    this.ctx.lineWidth = 2.2
     this.processTimers()
+  }
+
+  resetCamera(): void {
+    this.cameraReady = false
   }
 
   drawSprite(g: Graphics, spriteNo: number, x: number, y: number): void {
@@ -274,7 +278,9 @@ export class GameCanvas {
       this.dy += (dy - this.dy) * 0.18
     }
 
-    this.gamePhysics?.setRenderMinMaxX(-Math.round(this.dx), -Math.round(this.dx) + this.width)
+    // Include generous safety margin so all nearby segments render without edge popping
+    const margin = Math.max(200, Math.floor(this.width * 0.4))
+    this.gamePhysics?.setRenderMinMaxX(-Math.round(this.dx) - margin, -Math.round(this.dx) + this.width + margin)
   }
 
   getDx(): number {
@@ -635,9 +641,9 @@ export class GameCanvas {
 
   clearScreenWithWhite(): void {
     const skyGradient = this.ctx.createLinearGradient(0, 0, 0, this.height2)
-    skyGradient.addColorStop(0, '#f5f9ff')
-    skyGradient.addColorStop(0.38, '#ffffff')
-    skyGradient.addColorStop(1, '#eef7ea')
+    skyGradient.addColorStop(0, '#f8fafc')
+    skyGradient.addColorStop(0.45, '#ffffff')
+    skyGradient.addColorStop(1, '#f1f5f9')
     this.ctx.fillStyle = skyGradient
     this.ctx.fillRect(0, 0, this.width, this.height2)
   }

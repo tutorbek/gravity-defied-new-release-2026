@@ -101,6 +101,7 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
   gameCanvas.setRepaintHandler(render)
 
   function restart(scheduleTimerMessage: boolean): void {
+    gameCanvas.resetCamera()
     gamePhysics.resetSmth(true)
     micro.timeMs = 0
     micro.gameTimeMs = 0
@@ -538,12 +539,13 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
   controlsElement?.addEventListener('pointercancel', handleControlPointerRelease)
   controlsElement?.addEventListener('lostpointercapture', handleControlPointerRelease)
 
-  gameCanvas.requestRepaint(0)
-  restart(false)
-  gameCanvas.setUiOverlayEnabled(false)
   menuManager.unlockAllContent()
   levelLoader.loadLevel(menuManager.getSelectedLevel(), menuManager.getSelectedTrack())
   gamePhysics.setMotoLeague(menuManager.getSelectedLeague())
+  gameCanvas.resetCamera()
+  restart(false)
+  gameCanvas.requestRepaint(0)
+  gameCanvas.setUiOverlayEnabled(false)
   micro.menuToGame()
 
   const storedSettings = loadStoredSettings()

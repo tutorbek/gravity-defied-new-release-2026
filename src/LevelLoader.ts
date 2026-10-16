@@ -204,7 +204,7 @@ export class LevelLoader {
       return
     }
 
-    gameCanvas.setColor(0, 170, 0)
+    gameCanvas.setColor(18, 148, 56)
     xF16 >>= 1
     yF16 >>= 1
     this.gameLevel.renderLevel3D(gameCanvas, xF16, yF16)
@@ -215,7 +215,7 @@ export class LevelLoader {
       return
     }
 
-    canvas.setColor(0, 255, 0)
+    canvas.setColor(15, 175, 45)
     this.gameLevel.renderTrackNearestGreenLine(canvas)
   }
 
