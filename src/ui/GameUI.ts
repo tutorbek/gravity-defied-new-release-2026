@@ -25,7 +25,7 @@ export type GameRuntimeState = {
 
 export type GameRuntimeController = {
   startOrResume: () => void
-  openMenu: (tab?: 'tracks' | 'settings' | 'records' | 'controls') => void
+  openMenu: () => void
   openPause: () => void
   closeMenu: () => void
   restart: () => void
@@ -54,7 +54,7 @@ export type GameRuntimeController = {
   onStateChange: (listener: (state: GameRuntimeState) => void) => () => void
 }
 
-const SETTINGS_STORAGE_KEY = 'gravity_defied_settings_v2'
+const SETTINGS_STORAGE_KEY = 'gravity_defied_settings_v3'
 
 export function loadStoredSettings(): GameUISettings {
   const defaults: GameUISettings = {
@@ -94,7 +94,7 @@ export class GameUI {
   private readonly controller: GameRuntimeController
   private container: HTMLDivElement | null = null
   private hudElement: HTMLDivElement | null = null
-  private modalElement: HTMLDivElement | null = null
+  private drawerElement: HTMLDivElement | null = null
   private finishDialogElement: HTMLDivElement | null = null
   private pauseDialogElement: HTMLDivElement | null = null
   private confirmDialogElement: HTMLDivElement | null = null
@@ -103,10 +103,15 @@ export class GameUI {
   private selectedLevelTab = 0
   private selectedLeagueTab = 0
 
-  private readonly activePointerKeys = new Map<number, string>()
-  private readonly activePointerButtons = new Map<number, HTMLElement>()
+  private readonly activePointers = new Map<number, { button: HTMLElement; key: string }>()
   private unsubscribeStateChange: (() => void) | null = null
   private currentState: GameRuntimeState
+
+  // Global bound handlers for reliable pointer release
+  private readonly boundGlobalPointerUp: (e: PointerEvent) => void
+  private readonly boundGlobalPointerCancel: (e: PointerEvent) => void
+  private readonly boundWindowBlur: () => void
+  private readonly boundContextMenu: (e: MouseEvent) => void
 
   constructor(root: HTMLElement, controller: GameRuntimeController) {
     this.root = root
@@ -126,6 +131,13 @@ export class GameUI {
       difficultyName: controller.getLevelDifficultyNames()[controller.getCurrentLevel()] ?? 'Oson',
     }
 
+    this.boundGlobalPointerUp = (e) => this.handleGlobalPointerRelease(e)
+    this.boundGlobalPointerCancel = (e) => this.handleGlobalPointerRelease(e)
+    this.boundWindowBlur = () => this.releaseAllKeys()
+    this.boundContextMenu = (e) => {
+      e.preventDefault()
+    }
+
     this.init()
   }
 
@@ -143,6 +155,12 @@ export class GameUI {
       this.handleStateChange(state)
     })
 
+    window.addEventListener('pointerup', this.boundGlobalPointerUp, { passive: false })
+    window.addEventListener('pointercancel', this.boundGlobalPointerCancel, { passive: false })
+    window.addEventListener('blur', this.boundWindowBlur)
+    window.addEventListener('contextmenu', this.boundContextMenu, { capture: true, passive: false })
+    document.addEventListener('visibilitychange', this.boundWindowBlur)
+
     this.updateHudVisibility()
     this.updateHudInfo()
   }
@@ -150,57 +168,97 @@ export class GameUI {
   private triggerHaptic(): void {
     if (this.controller.getSettings().haptics && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
-        navigator.vibrate(12)
+        navigator.vibrate(10)
       } catch (_error) {
         void _error
       }
     }
   }
 
+  private handleGlobalPointerRelease(event: PointerEvent): void {
+    const entry = this.activePointers.get(event.pointerId)
+    if (!entry) return
+
+    this.activePointers.delete(event.pointerId)
+    entry.button.classList.remove('is-active')
+    this.controller.releaseKey(entry.key)
+  }
+
+  private releaseAllKeys(): void {
+    for (const entry of this.activePointers.values()) {
+      entry.button.classList.remove('is-active')
+      this.controller.releaseKey(entry.key)
+    }
+    this.activePointers.clear()
+  }
+
+  // ==========================================
+  // HUD (MINIMALIST IN-GAME INTERFACE)
+  // ==========================================
+
   private createHud(): HTMLDivElement {
     const hud = document.createElement('div')
     hud.className = 'game-hud'
-    hud.setAttribute('aria-label', 'Mobil boshqaruv paneli')
+    hud.setAttribute('aria-label', 'Boshqaruv paneli')
 
-    // Top Header Bar
+    // Top Header: Minimalist Top Bar with Burger Menu
     const topBar = document.createElement('div')
     topBar.className = 'game-hud__top'
 
-    const topButtonsLeft = document.createElement('div')
-    topButtonsLeft.className = 'game-hud__top-group'
-
-    const menuBtn = document.createElement('button')
-    menuBtn.type = 'button'
-    menuBtn.className = 'hud-icon-button hud-icon-button--menu'
-    menuBtn.title = 'Menyuni ochish (Esc)'
-    menuBtn.innerHTML = `
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-        <line x1="3" y1="6" x2="21" y2="6"/>
-        <line x1="3" y1="12" x2="21" y2="12"/>
-        <line x1="3" y1="18" x2="21" y2="18"/>
+    // Left: Minimal Hamburger Button
+    const burgerBtn = document.createElement('button')
+    burgerBtn.type = 'button'
+    burgerBtn.className = 'hud-btn hud-btn--burger'
+    burgerBtn.setAttribute('aria-label', 'Menyuni ochish')
+    burgerBtn.title = 'Menyu'
+    burgerBtn.innerHTML = `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="4" y1="7" x2="20" y2="7"/>
+        <line x1="4" y1="12" x2="20" y2="12"/>
+        <line x1="4" y1="17" x2="20" y2="17"/>
       </svg>
-      <span>Menyu</span>
     `
-    menuBtn.addEventListener('click', (e) => {
+    burgerBtn.addEventListener('click', (e) => {
+      e.preventDefault()
       e.stopPropagation()
       this.triggerHaptic()
-      this.openMenuModal('tracks')
+      this.openDrawer('tracks')
     })
+
+    // Center: Subtle, non-distracting track title
+    const trackBadge = document.createElement('button')
+    trackBadge.type = 'button'
+    trackBadge.className = 'hud-track-badge'
+    trackBadge.setAttribute('aria-label', 'Trassani almashtirish')
+    trackBadge.innerHTML = `
+      <span class="hud-track-badge__name">${this.getTrackBadgeText()}</span>
+      <span class="hud-track-badge__sep">/</span>
+      <span class="hud-track-badge__bike">${this.currentState.leagueName}</span>
+    `
+    trackBadge.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      this.triggerHaptic()
+      this.openDrawer('tracks')
+    })
+
+    // Right: Minimal Restart & Sound Buttons
+    const rightGroup = document.createElement('div')
+    rightGroup.className = 'hud-top-right'
 
     const restartBtn = document.createElement('button')
     restartBtn.type = 'button'
-    restartBtn.className = 'hud-icon-button hud-icon-button--restart'
-    restartBtn.title = 'Trassani qayta boshlash (R)'
+    restartBtn.className = 'hud-btn hud-btn--restart'
+    restartBtn.setAttribute('aria-label', 'Trassani qayta boshlash')
+    restartBtn.title = 'Qayta (R)'
     restartBtn.innerHTML = `
-      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 2v6h-6"/>
-        <path d="M3 12a9 9 0 0 1 15.36-6.36L21 8"/>
-        <path d="M3 22v-6h6"/>
-        <path d="M21 12a9 9 0 0 1-15.36 6.36L3 16"/>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+        <path d="M3 3v5h5"/>
       </svg>
-      <span>Qayta</span>
     `
     restartBtn.addEventListener('click', (e) => {
+      e.preventDefault()
       e.stopPropagation()
       this.triggerHaptic()
       this.controller.restart()
@@ -208,10 +266,11 @@ export class GameUI {
 
     const soundBtn = document.createElement('button')
     soundBtn.type = 'button'
-    soundBtn.className = 'hud-icon-button hud-icon-button--sound'
-    soundBtn.title = 'Ovozni yoqish / o‘chirish'
+    soundBtn.className = 'hud-btn hud-btn--sound'
+    soundBtn.setAttribute('aria-label', 'Ovozni o‘zgartirish')
     this.updateSoundButtonHtml(soundBtn)
     soundBtn.addEventListener('click', (e) => {
+      e.preventDefault()
       e.stopPropagation()
       this.triggerHaptic()
       const nextMuted = !this.controller.isAudioMuted()
@@ -220,68 +279,30 @@ export class GameUI {
       this.updateSoundButtonHtml(soundBtn)
     })
 
-    topButtonsLeft.append(menuBtn, restartBtn, soundBtn)
+    rightGroup.append(restartBtn, soundBtn)
+    topBar.append(burgerBtn, trackBadge, rightGroup)
 
-    // Center Info Pill
-    const infoPill = document.createElement('div')
-    infoPill.className = 'game-hud__info-pill'
-    infoPill.innerHTML = `
-      <span class="game-hud__track-title">${this.getTrackBadgeText()}</span>
-      <span class="game-hud__league-badge">${this.currentState.leagueName}</span>
-    `
-    infoPill.addEventListener('click', (e) => {
-      e.stopPropagation()
-      this.triggerHaptic()
-      this.openMenuModal('tracks')
-    })
-
-    // Sponsor Link
-    const sponsorLink = document.createElement('a')
-    sponsorLink.className = 'hud-sponsor-link'
-    sponsorLink.href = 'https://t.me/tutorbek'
-    sponsorLink.target = '_blank'
-    sponsorLink.rel = 'noopener noreferrer'
-    sponsorLink.innerHTML = '<span class="hud-sponsor-link__pulse"></span><span>tutorbek</span>'
-
-    topBar.append(topButtonsLeft, infoPill, sponsorLink)
-
-    // Bottom Controls
+    // Bottom Controls: Clean, Minimalist, Tactile
     const bottomControls = document.createElement('div')
     bottomControls.className = 'game-hud__bottom'
 
-    // Left Cluster: Lean back / forward
+    // Left Cluster: Lean backward / forward
     const leftCluster = document.createElement('div')
     leftCluster.className = 'game-hud__cluster game-hud__cluster--lean'
 
-    const leanBackBtn = document.createElement('button')
-    leanBackBtn.type = 'button'
-    leanBackBtn.className = 'control-btn control-btn--lean-back'
-    leanBackBtn.dataset.gameKey = 'KeyA'
-    leanBackBtn.setAttribute('aria-label', 'Orqaga og‘ish')
-    leanBackBtn.innerHTML = `
-      <div class="control-btn__icon">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/>
-        </svg>
-      </div>
-      <div class="control-btn__label">ORQAGA</div>
-      <div class="control-btn__sub">A</div>
-    `
+    const leanBackBtn = this.createControlButton('KeyA', 'control-btn--lean', 'Orqaga og‘ish (A)', `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"/>
+        <polyline points="12 19 5 12 12 5"/>
+      </svg>
+    `, 'ORQAGA')
 
-    const leanForwardBtn = document.createElement('button')
-    leanForwardBtn.type = 'button'
-    leanForwardBtn.className = 'control-btn control-btn--lean-forward'
-    leanForwardBtn.dataset.gameKey = 'KeyD'
-    leanForwardBtn.setAttribute('aria-label', 'Oldinga og‘ish')
-    leanForwardBtn.innerHTML = `
-      <div class="control-btn__icon">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-        </svg>
-      </div>
-      <div class="control-btn__label">OLDINGA</div>
-      <div class="control-btn__sub">D</div>
-    `
+    const leanForwardBtn = this.createControlButton('KeyD', 'control-btn--lean', 'Oldinga og‘ish (D)', `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5" y1="12" x2="19" y2="12"/>
+        <polyline points="12 5 19 12 12 19"/>
+      </svg>
+    `, 'OLDINGA')
 
     leftCluster.append(leanBackBtn, leanForwardBtn)
 
@@ -289,122 +310,93 @@ export class GameUI {
     const rightCluster = document.createElement('div')
     rightCluster.className = 'game-hud__cluster game-hud__cluster--drive'
 
-    const gasBtn = document.createElement('button')
-    gasBtn.type = 'button'
-    gasBtn.className = 'control-btn control-btn--gas'
-    gasBtn.dataset.gameKey = 'KeyW'
-    gasBtn.setAttribute('aria-label', 'Gaz (Tezlanish)')
-    gasBtn.innerHTML = `
-      <div class="control-btn__icon">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M7 14l5-5 5 5z"/>
-        </svg>
-      </div>
-      <div class="control-btn__label">GAZ</div>
-      <div class="control-btn__sub">W</div>
-    `
+    const brakeBtn = this.createControlButton('KeyS', 'control-btn--brake', 'Tormoz (S)', `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <polyline points="19 12 12 19 5 12"/>
+      </svg>
+    `, 'TORMOZ')
 
-    const brakeBtn = document.createElement('button')
-    brakeBtn.type = 'button'
-    brakeBtn.className = 'control-btn control-btn--brake'
-    brakeBtn.dataset.gameKey = 'KeyS'
-    brakeBtn.setAttribute('aria-label', 'Tormoz')
-    brakeBtn.innerHTML = `
-      <div class="control-btn__icon">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M7 10l5 5 5-5z"/>
-        </svg>
-      </div>
-      <div class="control-btn__label">TORMOZ</div>
-      <div class="control-btn__sub">S</div>
-    `
+    const gasBtn = this.createControlButton('KeyW', 'control-btn--gas', 'Gaz (W)', `
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="19" x2="12" y2="5"/>
+        <polyline points="5 12 12 5 19 12"/>
+      </svg>
+    `, 'GAZ')
 
     rightCluster.append(brakeBtn, gasBtn)
-
     bottomControls.append(leftCluster, rightCluster)
 
     hud.append(topBar, bottomControls)
-
-    this.bindControlPointerEvents(bottomControls)
-
     return hud
+  }
+
+  private createControlButton(
+    key: string,
+    extraClass: string,
+    ariaLabel: string,
+    iconSvg: string,
+    textLabel: string,
+  ): HTMLButtonElement {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = `control-btn ${extraClass}`
+    btn.dataset.gameKey = key
+    btn.setAttribute('aria-label', ariaLabel)
+    btn.setAttribute('draggable', 'false')
+
+    btn.innerHTML = `
+      <div class="control-btn__icon">${iconSvg}</div>
+      <div class="control-btn__label">${textLabel}</div>
+    `
+
+    // Prevent text selection, contextmenu, and long press callouts completely
+    btn.addEventListener('contextmenu', (e) => e.preventDefault())
+    btn.addEventListener('selectstart', (e) => e.preventDefault())
+
+    btn.addEventListener('pointerdown', (e: PointerEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      if (this.activePointers.has(e.pointerId)) return
+
+      this.triggerHaptic()
+      btn.classList.add('is-active')
+      this.activePointers.set(e.pointerId, { button: btn, key })
+
+      try {
+        btn.setPointerCapture(e.pointerId)
+      } catch (_err) {
+        void _err
+      }
+
+      this.controller.pressKey(key)
+    }, { passive: false })
+
+    return btn
   }
 
   private updateSoundButtonHtml(btn: HTMLButtonElement): void {
     const isMuted = this.controller.isAudioMuted()
     if (isMuted) {
       btn.innerHTML = `
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="1" y1="1" x2="23" y2="23"/>
           <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
           <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
-          <line x1="12" y1="19" x2="12" y2="23"/>
-          <line x1="8" y1="23" x2="16" y2="23"/>
         </svg>
-        <span>Ovoz</span>
       `
-      btn.classList.add('hud-icon-button--off')
+      btn.classList.add('hud-btn--off')
     } else {
       btn.innerHTML = `
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
           <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
           <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
         </svg>
-        <span>Ovoz</span>
       `
-      btn.classList.remove('hud-icon-button--off')
+      btn.classList.remove('hud-btn--off')
     }
-  }
-
-  private bindControlPointerEvents(container: HTMLElement): void {
-    const handlePointerDown = (event: PointerEvent): void => {
-      const button = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('[data-game-key]')
-      if (!button) return
-
-      const key = button.dataset.gameKey
-      if (!key) return
-
-      event.preventDefault()
-      if (this.activePointerKeys.has(event.pointerId)) return
-
-      this.triggerHaptic()
-      button.setPointerCapture(event.pointerId)
-      button.classList.add('is-pressed')
-
-      this.activePointerKeys.set(event.pointerId, key)
-      this.activePointerButtons.set(event.pointerId, button)
-      this.controller.pressKey(key)
-    }
-
-    const handlePointerRelease = (event: PointerEvent): void => {
-      const key = this.activePointerKeys.get(event.pointerId)
-      if (!key) return
-
-      event.preventDefault()
-      this.activePointerKeys.delete(event.pointerId)
-      const button = this.activePointerButtons.get(event.pointerId)
-      button?.classList.remove('is-pressed')
-      this.activePointerButtons.delete(event.pointerId)
-
-      this.controller.releaseKey(key)
-    }
-
-    container.addEventListener('pointerdown', handlePointerDown)
-    container.addEventListener('pointerup', handlePointerRelease)
-    container.addEventListener('pointercancel', handlePointerRelease)
-    container.addEventListener('lostpointercapture', handlePointerRelease)
-  }
-
-  private releaseAllKeys(): void {
-    for (const key of this.activePointerKeys.values()) {
-      this.controller.releaseKey(key)
-    }
-    for (const button of this.activePointerButtons.values()) {
-      button.classList.remove('is-pressed')
-    }
-    this.activePointerKeys.clear()
-    this.activePointerButtons.clear()
   }
 
   private updateHudVisibility(): void {
@@ -425,19 +417,19 @@ export class GameUI {
   private getTrackBadgeText(): string {
     const diff = this.currentState.difficultyName
     const name = this.currentState.trackName || 'Intro'
-    return `${diff} • ${name}`
+    return `${diff.toUpperCase()} · ${name.toUpperCase()}`
   }
 
   private updateHudInfo(): void {
     if (!this.hudElement) return
-    const titleEl = this.hudElement.querySelector('.game-hud__track-title')
-    const leagueEl = this.hudElement.querySelector('.game-hud__league-badge')
+    const titleEl = this.hudElement.querySelector('.hud-track-badge__name')
+    const bikeEl = this.hudElement.querySelector('.hud-track-badge__bike')
 
     if (titleEl) {
-      titleEl.textContent = this.getTrackBadgeText()
+      titleEl.textContent = `${this.currentState.difficultyName.toUpperCase()} · ${(this.currentState.trackName || 'Intro').toUpperCase()}`
     }
-    if (leagueEl) {
-      leagueEl.textContent = this.currentState.leagueName
+    if (bikeEl) {
+      bikeEl.textContent = this.currentState.leagueName.toUpperCase()
     }
   }
 
@@ -451,7 +443,7 @@ export class GameUI {
       this.closeFinishedModal()
     }
 
-    if (state.isPaused && !state.isInMenu && !this.modalElement && !this.finishDialogElement) {
+    if (state.isPaused && !state.isInMenu && !this.drawerElement && !this.finishDialogElement) {
       this.showPauseModal()
     } else if (!state.isPaused && this.pauseDialogElement) {
       this.closePauseModal()
@@ -459,10 +451,10 @@ export class GameUI {
   }
 
   // ==========================================
-  // UNIFIED MODERN MENU MODAL
+  // BURGER MENU DRAWER (SLIDE-OUT MODERN DRAWER)
   // ==========================================
 
-  openMenuModal(tab: 'tracks' | 'settings' | 'records' | 'controls' = 'tracks'): void {
+  openDrawer(tab: 'tracks' | 'settings' | 'records' | 'controls' = 'tracks'): void {
     this.releaseAllKeys()
     this.activeTab = tab
     this.selectedLevelTab = this.controller.getCurrentLevel()
@@ -475,92 +467,100 @@ export class GameUI {
       this.closeFinishedModal()
     }
 
-    if (this.modalElement) {
-      this.renderModalContent()
+    if (this.drawerElement) {
+      this.renderDrawerContent()
       return
     }
 
-    const modal = document.createElement('div')
-    modal.className = 'game-modal-overlay'
-    modal.setAttribute('role', 'dialog')
-    modal.setAttribute('aria-modal', 'true')
-    this.modalElement = modal
+    const overlay = document.createElement('div')
+    overlay.className = 'drawer-overlay'
+    overlay.setAttribute('role', 'dialog')
+    overlay.setAttribute('aria-modal', 'true')
 
-    this.renderModalContent()
-    this.container?.appendChild(modal)
-    this.controller.openMenu(tab)
+    // Close when clicking outside drawer
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        this.triggerHaptic()
+        this.closeDrawer()
+      }
+    })
+
+    this.drawerElement = overlay
+    this.renderDrawerContent()
+    this.container?.appendChild(overlay)
+    this.controller.openMenu()
   }
 
-  closeMenuModal(): void {
-    if (this.modalElement) {
-      this.modalElement.remove()
-      this.modalElement = null
+  closeDrawer(): void {
+    if (this.drawerElement) {
+      this.drawerElement.remove()
+      this.drawerElement = null
     }
     this.controller.closeMenu()
   }
 
-  private renderModalContent(): void {
-    if (!this.modalElement) return
-    this.modalElement.innerHTML = ''
+  private renderDrawerContent(): void {
+    if (!this.drawerElement) return
+    this.drawerElement.innerHTML = ''
 
-    const card = document.createElement('div')
-    card.className = 'game-modal-card'
+    const drawer = document.createElement('div')
+    drawer.className = 'drawer-panel'
 
-    // Header
+    // Drawer Header
     const header = document.createElement('div')
-    header.className = 'game-modal__header'
+    header.className = 'drawer-header'
 
     const titleGroup = document.createElement('div')
-    titleGroup.className = 'game-modal__title-group'
+    titleGroup.className = 'drawer-header__title'
     titleGroup.innerHTML = `
-      <div class="game-modal__title">GRAVITY DEFIED</div>
-      <div class="game-modal__subtitle">Oddiy va qulay boshqaruv menyusi</div>
+      <div class="drawer-title">GRAVITY DEFIED</div>
+      <div class="drawer-subtitle">2026 EDITION</div>
     `
 
     const closeBtn = document.createElement('button')
     closeBtn.type = 'button'
-    closeBtn.className = 'game-modal__close-btn'
-    closeBtn.setAttribute('aria-label', 'Yopish va o‘ynash')
+    closeBtn.className = 'drawer-close-btn'
+    closeBtn.setAttribute('aria-label', 'Yopish')
     closeBtn.innerHTML = `
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <line x1="18" y1="6" x2="6" y2="18"/>
         <line x1="6" y1="6" x2="18" y2="18"/>
       </svg>
     `
     closeBtn.addEventListener('click', () => {
       this.triggerHaptic()
-      this.closeMenuModal()
+      this.closeDrawer()
     })
 
     header.append(titleGroup, closeBtn)
 
-    // Tabs Nav
-    const tabsNav = document.createElement('div')
-    tabsNav.className = 'game-modal__nav'
+    // Segmented Navigation Tabs
+    const nav = document.createElement('div')
+    nav.className = 'drawer-nav'
 
-    const tabs: Array<{ id: 'tracks' | 'settings' | 'records' | 'controls'; label: string; icon: string }> = [
-      { id: 'tracks', label: 'Trassalar', icon: '🏁' },
-      { id: 'settings', label: 'Sozlamalar', icon: '⚙️' },
-      { id: 'records', label: 'Rekordlar', icon: '🏆' },
-      { id: 'controls', label: 'Boshqaruv', icon: '❓' },
+    const tabs: Array<{ id: 'tracks' | 'settings' | 'records' | 'controls'; label: string }> = [
+      { id: 'tracks', label: 'Trassalar' },
+      { id: 'settings', label: 'Sozlamalar' },
+      { id: 'records', label: 'Rekordlar' },
+      { id: 'controls', label: 'Boshqaruv' },
     ]
 
     for (const tab of tabs) {
       const tabBtn = document.createElement('button')
       tabBtn.type = 'button'
-      tabBtn.className = `game-modal__nav-tab ${this.activeTab === tab.id ? 'is-active' : ''}`
-      tabBtn.innerHTML = `<span>${tab.icon}</span> <span>${tab.label}</span>`
+      tabBtn.className = `drawer-tab ${this.activeTab === tab.id ? 'is-active' : ''}`
+      tabBtn.textContent = tab.label
       tabBtn.addEventListener('click', () => {
         this.triggerHaptic()
         this.activeTab = tab.id
-        this.renderModalContent()
+        this.renderDrawerContent()
       })
-      tabsNav.appendChild(tabBtn)
+      nav.appendChild(tabBtn)
     }
 
-    // Tab Body
+    // Body content according to tab
     const body = document.createElement('div')
-    body.className = 'game-modal__body'
+    body.className = 'drawer-body'
 
     if (this.activeTab === 'tracks') {
       body.appendChild(this.renderTracksTab())
@@ -572,8 +572,18 @@ export class GameUI {
       body.appendChild(this.renderControlsTab())
     }
 
-    card.append(header, tabsNav, body)
-    this.modalElement.appendChild(card)
+    // Footer with sponsor link
+    const footer = document.createElement('div')
+    footer.className = 'drawer-footer'
+    footer.innerHTML = `
+      <a class="drawer-sponsor" href="https://t.me/tutorbek" target="_blank" rel="noopener noreferrer">
+        <span class="drawer-sponsor__dot"></span>
+        <span>Powered by tutorbek</span>
+      </a>
+    `
+
+    drawer.append(header, nav, body, footer)
+    this.drawerElement.appendChild(drawer)
   }
 
   // ==========================================
@@ -582,76 +592,76 @@ export class GameUI {
 
   private renderTracksTab(): HTMLElement {
     const container = document.createElement('div')
-    container.className = 'tab-tracks'
+    container.className = 'tab-content tab-tracks'
 
-    // Difficulty Select Row
+    // Difficulty Selector
     const diffSection = document.createElement('div')
-    diffSection.className = 'section-block'
+    diffSection.className = 'panel-section'
 
     const diffTitle = document.createElement('div')
-    diffTitle.className = 'section-title'
-    diffTitle.textContent = 'Qiyinlik darajasi:'
+    diffTitle.className = 'panel-section-title'
+    diffTitle.textContent = 'Qiyinlik darajasi'
 
     const diffRow = document.createElement('div')
-    diffRow.className = 'segmented-row'
+    diffRow.className = 'segmented-control'
 
-    const difficulties = [
-      { id: 0, label: 'Oson (Easy)', color: '#10b981' },
-      { id: 1, label: 'O‘rtacha (Medium)', color: '#f59e0b' },
-      { id: 2, label: 'Qiyin (Pro)', color: '#ef4444' },
+    const diffs = [
+      { id: 0, label: 'Oson' },
+      { id: 1, label: 'O‘rtacha' },
+      { id: 2, label: 'Qiyin' },
     ]
 
-    for (const diff of difficulties) {
+    for (const diff of diffs) {
       const btn = document.createElement('button')
       btn.type = 'button'
-      btn.className = `segmented-btn ${this.selectedLevelTab === diff.id ? 'is-active' : ''}`
-      btn.innerHTML = `<span class="dot" style="background:${diff.color}"></span><span>${diff.label}</span>`
+      btn.className = `segmented-item ${this.selectedLevelTab === diff.id ? 'is-active' : ''}`
+      btn.textContent = diff.label
       btn.addEventListener('click', () => {
         this.triggerHaptic()
         this.selectedLevelTab = diff.id
-        this.renderModalContent()
+        this.renderDrawerContent()
       })
       diffRow.appendChild(btn)
     }
     diffSection.append(diffTitle, diffRow)
 
-    // Bike (League) Select Row
+    // Bike Selector
     const bikeSection = document.createElement('div')
-    bikeSection.className = 'section-block'
+    bikeSection.className = 'panel-section'
 
     const bikeTitle = document.createElement('div')
-    bikeTitle.className = 'section-title'
-    bikeTitle.textContent = 'Motosikl kuchi (League):'
+    bikeTitle.className = 'panel-section-title'
+    bikeTitle.textContent = 'Motosikl'
 
     const bikeRow = document.createElement('div')
-    bikeRow.className = 'segmented-row'
+    bikeRow.className = 'segmented-control'
 
     const leagues = this.controller.getLeagueNames()
     leagues.forEach((name, idx) => {
       const btn = document.createElement('button')
       btn.type = 'button'
-      btn.className = `segmented-btn ${this.selectedLeagueTab === idx ? 'is-active' : ''}`
-      btn.innerHTML = `<span>🏍️ ${name}</span>`
+      btn.className = `segmented-item ${this.selectedLeagueTab === idx ? 'is-active' : ''}`
+      btn.textContent = name
       btn.addEventListener('click', () => {
         this.triggerHaptic()
         this.selectedLeagueTab = idx
         this.controller.setLeague(idx)
-        this.renderModalContent()
+        this.renderDrawerContent()
       })
       bikeRow.appendChild(btn)
     })
     bikeSection.append(bikeTitle, bikeRow)
 
-    // Tracks Grid
+    // Track Cards
     const tracksSection = document.createElement('div')
-    tracksSection.className = 'section-block'
+    tracksSection.className = 'panel-section'
 
     const tracksTitle = document.createElement('div')
-    tracksTitle.className = 'section-title'
-    tracksTitle.textContent = 'Trassani tanlang (Bosing va o‘ynang):'
+    tracksTitle.className = 'panel-section-title'
+    tracksTitle.textContent = 'Trassani tanlang'
 
     const grid = document.createElement('div')
-    grid.className = 'tracks-grid'
+    grid.className = 'track-list'
 
     const levelTracks = this.controller.getLevelNames()[this.selectedLevelTab] ?? []
     const currentLvl = this.controller.getCurrentLevel()
@@ -661,30 +671,25 @@ export class GameUI {
       const isCurrent = currentLvl === this.selectedLevelTab && currentTrk === trackIdx
       const card = document.createElement('button')
       card.type = 'button'
-      card.className = `track-card ${isCurrent ? 'is-active' : ''}`
+      card.className = `track-item ${isCurrent ? 'is-active' : ''}`
 
       const records = this.controller.getRecords(this.selectedLevelTab, trackIdx, this.selectedLeagueTab)
       const bestRecord = records[0] ? records[0].replace(/^[A-Z0-9\s]+\s+/, '') : '--:--.--'
 
       card.innerHTML = `
-        <div class="track-card__top">
-          <span class="track-card__badge">#${trackIdx + 1}</span>
-          ${isCurrent ? '<span class="track-card__playing">O‘ynalmoqda</span>' : ''}
+        <div class="track-item__index">${trackIdx + 1 < 10 ? '0' + (trackIdx + 1) : trackIdx + 1}</div>
+        <div class="track-item__info">
+          <div class="track-item__name">${trackName}</div>
+          <div class="track-item__time">${bestRecord}</div>
         </div>
-        <div class="track-card__name">${trackName}</div>
-        <div class="track-card__time">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/>
-          </svg>
-          <span>${bestRecord}</span>
-        </div>
+        ${isCurrent ? '<div class="track-item__dot"></div>' : ''}
       `
 
       card.addEventListener('click', () => {
         this.triggerHaptic()
         this.controller.setLeague(this.selectedLeagueTab)
         this.controller.loadTrack(this.selectedLevelTab, trackIdx)
-        this.closeMenuModal()
+        this.closeDrawer()
       })
 
       grid.appendChild(card)
@@ -692,163 +697,108 @@ export class GameUI {
 
     tracksSection.append(tracksTitle, grid)
 
-    // Actions Footer
-    const footer = document.createElement('div')
-    footer.className = 'tab-footer'
+    // Footer actions inside tab
+    const actionRow = document.createElement('div')
+    actionRow.className = 'tab-actions'
 
     const playBtn = document.createElement('button')
     playBtn.type = 'button'
-    playBtn.className = 'btn-primary'
-    playBtn.innerHTML = `
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M8 5v14l11-7z"/>
-      </svg>
-      <span>O‘yinga qaytish</span>
-    `
+    playBtn.className = 'btn-minimal btn-minimal--primary'
+    playBtn.textContent = 'Davom ettirish'
     playBtn.addEventListener('click', () => {
       this.triggerHaptic()
-      this.closeMenuModal()
+      this.closeDrawer()
     })
 
     const restartBtn = document.createElement('button')
     restartBtn.type = 'button'
-    restartBtn.className = 'btn-secondary'
-    restartBtn.innerHTML = `
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 2v6h-6"/>
-        <path d="M3 12a9 9 0 0 1 15.36-6.36L21 8"/>
-        <path d="M3 22v-6h6"/>
-        <path d="M21 12a9 9 0 0 1-15.36 6.36L3 16"/>
-      </svg>
-      <span>Boshidan boshlash</span>
-    `
+    restartBtn.className = 'btn-minimal btn-minimal--secondary'
+    restartBtn.textContent = 'Qayta boshlash'
     restartBtn.addEventListener('click', () => {
       this.triggerHaptic()
       this.controller.restart()
-      this.closeMenuModal()
+      this.closeDrawer()
     })
 
-    footer.append(playBtn, restartBtn)
+    actionRow.append(playBtn, restartBtn)
 
-    container.append(diffSection, bikeSection, tracksSection, footer)
+    container.append(diffSection, bikeSection, tracksSection, actionRow)
     return container
   }
 
   // ==========================================
-  // TAB 2: SOZLAMALAR (SETTINGS) - FLAT & CLEAN
+  // TAB 2: SOZLAMALAR (SETTINGS)
   // ==========================================
 
   private renderSettingsTab(): HTMLElement {
     const container = document.createElement('div')
-    container.className = 'tab-settings'
+    container.className = 'tab-content tab-settings'
 
     const settings = this.controller.getSettings()
 
     const list = document.createElement('div')
-    list.className = 'settings-list'
+    list.className = 'settings-group'
 
-    // Sound FX
     list.appendChild(
-      this.createSettingRow(
-        '🔊 O‘yin ovozi (Sound FX)',
-        'Dvigatel va harakat tovushlari',
-        settings.sound,
-        (val) => {
-          this.controller.updateSetting('sound', val)
-          this.controller.setAudioMuted(!val)
-          this.updateHudVisibility()
-        },
-      ),
+      this.createSettingRow('O‘yin ovozi', 'Dvigatel va harakat tovushlari', settings.sound, (val) => {
+        this.controller.updateSetting('sound', val)
+        this.controller.setAudioMuted(!val)
+        this.updateHudVisibility()
+      }),
     )
 
-    // Haptics (Vibration)
     list.appendChild(
-      this.createSettingRow(
-        '📳 Tugma tebranishi (Vibratsiya)',
-        'Tugmalarni bosganda yengil titrash',
-        settings.haptics,
-        (val) => {
-          this.controller.updateSetting('haptics', val)
-        },
-      ),
+      this.createSettingRow('Vibratsiya', 'Tugmalar bosilganda haptik sezgi', settings.haptics, (val) => {
+        this.controller.updateSetting('haptics', val)
+      }),
     )
 
-    // Shadows
     list.appendChild(
-      this.createSettingRow(
-        '🕶️ Soyalar (Shadows)',
-        'Trassa va motosikl ostidagi relyef soyalari',
-        settings.shadows,
-        (val) => {
-          this.controller.updateSetting('shadows', val)
-        },
-      ),
+      this.createSettingRow('3D Perspektiva', 'Trassa chuqurlik effekti', settings.perspective, (val) => {
+        this.controller.updateSetting('perspective', val)
+      }),
     )
 
-    // 3D Perspective
     list.appendChild(
-      this.createSettingRow(
-        '📐 3D Perspektiva',
-        'Trassa relyefining chuqurlik effekti',
-        settings.perspective,
-        (val) => {
-          this.controller.updateSetting('perspective', val)
-        },
-      ),
+      this.createSettingRow('Soyalar', 'Motosikl va relyef soyasi', settings.shadows, (val) => {
+        this.controller.updateSetting('shadows', val)
+      }),
     )
 
-    // Look Ahead Camera
     list.appendChild(
-      this.createSettingRow(
-        '🎥 Aqlli kamera (Look Ahead)',
-        'Tezlikka qarab kamerani oldinga siljitish',
-        settings.lookAhead,
-        (val) => {
-          this.controller.updateSetting('lookAhead', val)
-        },
-      ),
+      this.createSettingRow('Aqlli kamera', 'Harakat tezligiga qarab oldinga siljish', settings.lookAhead, (val) => {
+        this.controller.updateSetting('lookAhead', val)
+      }),
     )
 
-    // Driver 2D Texture
     list.appendChild(
-      this.createSettingRow(
-        '🏍️ Haydovchi teksturasi (Texture)',
-        'Yoqilganda rangli rasm, o‘chirilganda klassik chiziqlar',
-        settings.driverSprite,
-        (val) => {
-          this.controller.updateSetting('driverSprite', val)
-        },
-      ),
+      this.createSettingRow('Haydovchi teksturasi', 'Teksturali yoki klassik chiziqli rejim', settings.driverSprite, (val) => {
+        this.controller.updateSetting('driverSprite', val)
+      }),
     )
 
-    // Bike 2D Texture
     list.appendChild(
-      this.createSettingRow(
-        '🚲 Motosikl teksturasi (Texture)',
-        'Yoqilganda rangli rasm, o‘chirilganda klassik chiziqlar',
-        settings.bikeSprite,
-        (val) => {
-          this.controller.updateSetting('bikeSprite', val)
-        },
-      ),
+      this.createSettingRow('Motosikl teksturasi', 'Teksturali yoki klassik chiziqli rejim', settings.bikeSprite, (val) => {
+        this.controller.updateSetting('bikeSprite', val)
+      }),
     )
 
-    // On-screen controls mode
-    const controlsModeRow = document.createElement('div')
-    controlsModeRow.className = 'setting-row'
+    // Controls Mode
+    const controlsRow = document.createElement('div')
+    controlsRow.className = 'setting-row'
 
     const controlsMeta = document.createElement('div')
     controlsMeta.className = 'setting-row__meta'
     controlsMeta.innerHTML = `
-      <div class="setting-row__title">📱 Ekrandagi tugmalar ko‘rinishi</div>
-      <div class="setting-row__desc">Mobil boshqaruv tugmalarini ko‘rsatish rejimi</div>
+      <div class="setting-row__title">Ekrandagi tugmalar</div>
+      <div class="setting-row__desc">Mobil boshqaruv tugmalarini ko‘rsatish</div>
     `
 
     const modePicker = document.createElement('div')
-    modePicker.className = 'segmented-row segmented-row--compact'
+    modePicker.className = 'segmented-control segmented-control--compact'
 
     const modes: Array<{ id: 'auto' | 'always' | 'hidden'; label: string }> = [
-      { id: 'auto', label: 'Avtomatik' },
+      { id: 'auto', label: 'Avto' },
       { id: 'always', label: 'Doimiy' },
       { id: 'hidden', label: 'Yashirish' },
     ]
@@ -856,49 +806,38 @@ export class GameUI {
     for (const m of modes) {
       const btn = document.createElement('button')
       btn.type = 'button'
-      btn.className = `segmented-btn ${settings.controlsMode === m.id ? 'is-active' : ''}`
+      btn.className = `segmented-item ${settings.controlsMode === m.id ? 'is-active' : ''}`
       btn.textContent = m.label
       btn.addEventListener('click', () => {
         this.triggerHaptic()
         this.controller.updateSetting('controlsMode', m.id)
         this.updateHudVisibility()
-        this.renderModalContent()
+        this.renderDrawerContent()
       })
       modePicker.appendChild(btn)
     }
 
-    controlsModeRow.append(controlsMeta, modePicker)
-    list.appendChild(controlsModeRow)
+    controlsRow.append(controlsMeta, modePicker)
+    list.appendChild(controlsRow)
 
-    // Clear Records Action
-    const dangerSection = document.createElement('div')
-    dangerSection.className = 'danger-zone'
-
-    const clearRecordsBtn = document.createElement('button')
-    clearRecordsBtn.type = 'button'
-    clearRecordsBtn.className = 'btn-danger'
-    clearRecordsBtn.innerHTML = `
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="3 6 5 6 21 6"/>
-        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-      </svg>
-      <span>Barcha rekordlarni tozalash</span>
-    `
-    clearRecordsBtn.addEventListener('click', () => {
+    // Clear Records
+    const clearBtn = document.createElement('button')
+    clearBtn.type = 'button'
+    clearBtn.className = 'btn-minimal btn-minimal--danger'
+    clearBtn.textContent = 'Barcha rekordlarni tozalash'
+    clearBtn.addEventListener('click', () => {
       this.triggerHaptic()
       this.showConfirmDialog(
-        'Barcha rekordlarni tozalaysizmi?',
-        'Barcha trassalarda o‘rnatilgan vaqt rekordlari o‘chib ketadi. Bu amalni qaytarib bo‘lmaydi.',
+        'Barcha rekordlarni tozalash',
+        'Barcha o‘rnatilgan vaqt natijalari o‘chib ketadi. Buni tasdiqlaysizmi?',
         () => {
           this.controller.clearAllRecords()
-          this.renderModalContent()
+          this.renderDrawerContent()
         },
       )
     })
 
-    dangerSection.appendChild(clearRecordsBtn)
-
-    container.append(list, dangerSection)
+    container.append(list, clearBtn)
     return container
   }
 
@@ -919,7 +858,7 @@ export class GameUI {
     `
 
     const switchLabel = document.createElement('label')
-    switchLabel.className = 'ui-switch'
+    switchLabel.className = 'minimal-switch'
 
     const checkbox = document.createElement('input')
     checkbox.type = 'checkbox'
@@ -930,7 +869,7 @@ export class GameUI {
     })
 
     const slider = document.createElement('span')
-    slider.className = 'ui-switch__slider'
+    slider.className = 'minimal-switch__slider'
 
     switchLabel.append(checkbox, slider)
     row.append(meta, switchLabel)
@@ -943,7 +882,7 @@ export class GameUI {
 
   private renderRecordsTab(): HTMLElement {
     const container = document.createElement('div')
-    container.className = 'tab-records'
+    container.className = 'tab-content tab-records'
 
     const currentLvl = this.selectedLevelTab
     const currentTrk = this.controller.getCurrentTrack()
@@ -954,131 +893,115 @@ export class GameUI {
     const diffName = this.controller.getLevelDifficultyNames()[currentLvl] ?? 'Oson'
 
     const header = document.createElement('div')
-    header.className = 'records-header'
+    header.className = 'records-box'
     header.innerHTML = `
-      <div class="records-header__track">${diffName} • ${trackName}</div>
-      <div class="records-header__bike">Motosikl: ${leagueName}</div>
+      <div class="records-box__title">${diffName.toUpperCase()} · ${trackName.toUpperCase()}</div>
+      <div class="records-box__sub">Motosikl: ${leagueName}</div>
     `
 
     const records = this.controller.getRecords(currentLvl, currentTrk, currentLeague)
 
     const list = document.createElement('div')
-    list.className = 'records-list'
+    list.className = 'records-simple-list'
 
-    const medals = [
-      { rank: '1-o‘rin', icon: '🥇', class: 'gold' },
-      { rank: '2-o‘rin', icon: '🥈', class: 'silver' },
-      { rank: '3-o‘rin', icon: '🥉', class: 'bronze' },
-    ]
+    let hasAny = false
+    const rankLabels = ['1-o‘rin', '2-o‘rin', '3-o‘rin']
 
-    let hasAnyRecord = false
-    medals.forEach((medal, idx) => {
+    rankLabels.forEach((label, idx) => {
       const rec = records[idx]
       const row = document.createElement('div')
-      row.className = `record-row record-row--${medal.class}`
+      row.className = 'record-simple-item'
 
       if (rec && rec.trim() !== '') {
-        hasAnyRecord = true
+        hasAny = true
         row.innerHTML = `
-          <div class="record-row__rank">${medal.icon} <span>${medal.rank}</span></div>
-          <div class="record-row__details">${rec}</div>
+          <div class="record-simple-item__rank">${label}</div>
+          <div class="record-simple-item__val">${rec}</div>
         `
       } else {
         row.innerHTML = `
-          <div class="record-row__rank">${medal.icon} <span>${medal.rank}</span></div>
-          <div class="record-row__empty">Hozircha rekord yo‘q</div>
+          <div class="record-simple-item__rank">${label}</div>
+          <div class="record-simple-item__val record-simple-item__val--none">—</div>
         `
       }
       list.appendChild(row)
     })
 
-    if (!hasAnyRecord) {
-      const emptyNotice = document.createElement('div')
-      emptyNotice.className = 'empty-notice'
-      emptyNotice.innerHTML = `Bu trassada ushbu motosikl bilan hali natija qayd etilmagan. Trassani yakunlang va o‘z rekordingizni o‘rnating!`
-      container.append(header, list, emptyNotice)
-    } else {
-      container.append(header, list)
+    container.append(header, list)
+
+    if (!hasAny) {
+      const emptyNote = document.createElement('div')
+      emptyNote.className = 'panel-note'
+      emptyNote.textContent = 'Ushbu trassada hozircha rekord mavjud emas.'
+      container.appendChild(emptyNote)
     }
 
     return container
   }
 
   // ==========================================
-  // TAB 4: BOSHQARUV VA YORDAM (CONTROLS & HELP)
+  // TAB 4: BOSHQARUV (CONTROLS)
   // ==========================================
 
   private renderControlsTab(): HTMLElement {
     const container = document.createElement('div')
-    container.className = 'tab-controls-help'
+    container.className = 'tab-content tab-controls'
 
     container.innerHTML = `
-      <div class="help-card">
-        <div class="help-card__title">📱 Mobil telefon boshqaruvi</div>
-        <div class="help-grid">
-          <div class="help-item">
-            <span class="key-pill key-pill--gas">⚡ GAZ (W)</span>
-            <span>Oldinga harakatlanish va tezlanish berish.</span>
+      <div class="panel-section">
+        <div class="panel-section-title">Mobil boshqaruv</div>
+        <div class="control-guide-grid">
+          <div class="guide-row">
+            <span class="guide-tag">GAZ</span>
+            <span>Oldinga harakat va tezlanish berish</span>
           </div>
-          <div class="help-item">
-            <span class="key-pill key-pill--brake">🛑 TORMOZ (S)</span>
-            <span>Motosiklni to‘xtatish va orqaga harakat.</span>
+          <div class="guide-row">
+            <span class="guide-tag">TORMOZ</span>
+            <span>To‘xtatish va orqaga qaytish</span>
           </div>
-          <div class="help-item">
-            <span class="key-pill key-pill--lean">◀ ORQAGA (A)</span>
-            <span>Motosiklni orqaga burish / g‘ildirakni ko‘tarish.</span>
+          <div class="guide-row">
+            <span class="guide-tag">ORQAGA</span>
+            <span>Motosiklni orqaga burish</span>
           </div>
-          <div class="help-item">
-            <span class="key-pill key-pill--lean">▶ OLDINGA (D)</span>
-            <span>Motosiklni oldinga egish va muvozanatlash.</span>
-          </div>
-          <div class="help-item">
-            <span class="key-pill">⏸️ MENYU</span>
-            <span>O‘yinni pauza qilish va sozlamalarni ochish.</span>
-          </div>
-          <div class="help-item">
-            <span class="key-pill">🔄 QAYTA</span>
-            <span>Trassani bir zumda boshidan qayta boshlash.</span>
+          <div class="guide-row">
+            <span class="guide-tag">OLDINGA</span>
+            <span>Motosiklni oldinga burish</span>
           </div>
         </div>
       </div>
 
-      <div class="help-card">
-        <div class="help-card__title">💻 Klaviatura boshqaruvi (Kompyuterda)</div>
-        <div class="help-grid">
-          <div class="help-item">
-            <span class="key-pill">W / ↑</span>
-            <span>Gaz (Tezlanish)</span>
+      <div class="panel-section">
+        <div class="panel-section-title">Klaviatura boshqaruvi</div>
+        <div class="control-guide-grid">
+          <div class="guide-row">
+            <span class="guide-tag">W / ↑</span>
+            <span>Gaz</span>
           </div>
-          <div class="help-item">
-            <span class="key-pill">S / ↓</span>
-            <span>Tormoz (To‘xtash)</span>
+          <div class="guide-row">
+            <span class="guide-tag">S / ↓</span>
+            <span>Tormoz</span>
           </div>
-          <div class="help-item">
-            <span class="key-pill">A / ←</span>
-            <span>Orqaga og‘ish (Tilt Back)</span>
+          <div class="guide-row">
+            <span class="guide-tag">A / ←</span>
+            <span>Orqaga og‘ish</span>
           </div>
-          <div class="help-item">
-            <span class="key-pill">D / →</span>
-            <span>Oldinga og‘ish (Tilt Forward)</span>
+          <div class="guide-row">
+            <span class="guide-tag">D / →</span>
+            <span>Oldinga og‘ish</span>
           </div>
-          <div class="help-item">
-            <span class="key-pill">R</span>
-            <span>Tezkor qayta boshlash (Restart)</span>
+          <div class="guide-row">
+            <span class="guide-tag">R</span>
+            <span>Tezkor qayta boshlash</span>
           </div>
-          <div class="help-item">
-            <span class="key-pill">Esc / Space</span>
-            <span>Menyu / Pauza</span>
+          <div class="guide-row">
+            <span class="guide-tag">Esc</span>
+            <span>Menyu</span>
           </div>
         </div>
       </div>
 
-      <div class="pro-tip-box">
-        <div class="pro-tip-box__title">💡 Muhim mototrial maslahati:</div>
-        <div class="pro-tip-box__text">
-          Tepalikdan sakrash vaqtida motosikl holatini <b>◀ Orqaga</b> va <b>▶ Oldinga</b> tugmalari yordamida havoda to‘g‘rilang.
-          Yerga <b>ikkala g‘ildirak bilan baravar</b> qo‘nish motosikl ag‘darilib ketmasligini ta’minlaydi!
-        </div>
+      <div class="panel-note">
+        Sakrashdan so‘ng yerga ikkala g‘ildirak bilan baravar qo‘nish ag‘darilib ketmaslikni ta’minlaydi.
       </div>
     `
 
@@ -1086,7 +1009,7 @@ export class GameUI {
   }
 
   // ==========================================
-  // FINISHED DIALOG (MARRA)
+  // FINISHED DIALOG (MINIMALIST MARRA)
   // ==========================================
 
   showFinishedModal(timeStr: string, rank: number): void {
@@ -1096,61 +1019,39 @@ export class GameUI {
     }
 
     const overlay = document.createElement('div')
-    overlay.className = 'game-modal-overlay game-modal-overlay--finish'
+    overlay.className = 'dialog-overlay'
     overlay.setAttribute('role', 'dialog')
     overlay.setAttribute('aria-modal', 'true')
     this.finishDialogElement = overlay
 
     const card = document.createElement('div')
-    card.className = 'game-modal-card finish-card'
+    card.className = 'dialog-card'
 
     let rankBadge = ''
     if (rank === 0) {
-      rankBadge = '<div class="finish-rank-pill finish-rank-pill--gold">🥇 Yangi 1-o‘rin Rekordi!</div>'
+      rankBadge = '<div class="dialog-badge">1-O‘RIN REKORDI</div>'
     } else if (rank === 1) {
-      rankBadge = '<div class="finish-rank-pill finish-rank-pill--silver">🥈 Ajoyib! 2-o‘rin Rekordi!</div>'
+      rankBadge = '<div class="dialog-badge">2-O‘RIN NATIJASI</div>'
     } else if (rank === 2) {
-      rankBadge = '<div class="finish-rank-pill finish-rank-pill--bronze">🥉 Yaxshi! 3-o‘rin Rekordi!</div>'
+      rankBadge = '<div class="dialog-badge">3-O‘RIN NATIJASI</div>'
     } else {
-      rankBadge = '<div class="finish-rank-pill finish-rank-pill--passed">🏁 Trassa muvaffaqiyatli yakunlandi!</div>'
+      rankBadge = '<div class="dialog-badge">TRASSA YAKUNLANDI</div>'
     }
 
     const trackName = this.controller.getCurrentTrackName()
     const diffName = this.controller.getLevelDifficultyNames()[this.controller.getCurrentLevel()] ?? 'Oson'
 
     card.innerHTML = `
-      <div class="finish-card__trophy">🏆</div>
-      <div class="finish-card__title">TABRIKLAYMIZ! MARRA!</div>
-      <div class="finish-card__track">${diffName} • ${trackName}</div>
-      ${rankBadge}
-      <div class="finish-card__time-box">
-        <div class="finish-card__time-label">Sizning vaqtingiz:</div>
-        <div class="finish-card__time-val">${timeStr}</div>
+      <div class="dialog-header">
+        <div class="dialog-title">MARRA</div>
+        <div class="dialog-subtitle">${diffName} · ${trackName}</div>
       </div>
-      <div class="finish-card__actions">
-        <button type="button" class="btn-primary finish-btn-next">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
-          </svg>
-          <span>Keyingi trassa</span>
-        </button>
-        <button type="button" class="btn-secondary finish-btn-retry">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 2v6h-6"/>
-            <path d="M3 12a9 9 0 0 1 15.36-6.36L21 8"/>
-            <path d="M3 22v-6h6"/>
-            <path d="M21 12a9 9 0 0 1-15.36 6.36L3 16"/>
-          </svg>
-          <span>Qayta o‘ynash</span>
-        </button>
-        <button type="button" class="btn-secondary finish-btn-menu">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="3" y1="6" x2="21" y2="6"/>
-            <line x1="3" y1="12" x2="21" y2="12"/>
-            <line x1="3" y1="18" x2="21" y2="18"/>
-          </svg>
-          <span>Barcha trassalar</span>
-        </button>
+      ${rankBadge}
+      <div class="dialog-timer">${timeStr}</div>
+      <div class="dialog-actions">
+        <button type="button" class="btn-minimal btn-minimal--primary finish-btn-next">Keyingi trassa</button>
+        <button type="button" class="btn-minimal btn-minimal--secondary finish-btn-retry">Qayta o‘ynash</button>
+        <button type="button" class="btn-minimal btn-minimal--secondary finish-btn-menu">Barcha trassalar</button>
       </div>
     `
 
@@ -1169,7 +1070,7 @@ export class GameUI {
     card.querySelector('.finish-btn-menu')?.addEventListener('click', () => {
       this.triggerHaptic()
       this.closeFinishedModal()
-      this.openMenuModal('tracks')
+      this.openDrawer('tracks')
     })
 
     overlay.appendChild(card)
@@ -1184,7 +1085,7 @@ export class GameUI {
   }
 
   // ==========================================
-  // QUICK PAUSE MODAL
+  // QUICK PAUSE DIALOG
   // ==========================================
 
   showPauseModal(): void {
@@ -1192,54 +1093,26 @@ export class GameUI {
     if (this.pauseDialogElement) return
 
     const overlay = document.createElement('div')
-    overlay.className = 'game-modal-overlay game-modal-overlay--pause'
+    overlay.className = 'dialog-overlay'
     overlay.setAttribute('role', 'dialog')
     overlay.setAttribute('aria-modal', 'true')
     this.pauseDialogElement = overlay
 
     const card = document.createElement('div')
-    card.className = 'game-modal-card pause-card'
+    card.className = 'dialog-card'
 
     const trackName = this.controller.getCurrentTrackName()
     const diffName = this.controller.getLevelDifficultyNames()[this.controller.getCurrentLevel()] ?? 'Oson'
 
     card.innerHTML = `
-      <div class="pause-card__header">
-        <div class="pause-card__icon">⏸️</div>
-        <div class="pause-card__title">O‘YIN TO‘XTATILDI</div>
-        <div class="pause-card__track">${diffName} • ${trackName}</div>
+      <div class="dialog-header">
+        <div class="dialog-title">PAUZA</div>
+        <div class="dialog-subtitle">${diffName} · ${trackName}</div>
       </div>
-      <div class="pause-card__actions">
-        <button type="button" class="btn-primary pause-btn-resume">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M8 5v14l11-7z"/>
-          </svg>
-          <span>Davom ettirish</span>
-        </button>
-        <button type="button" class="btn-secondary pause-btn-restart">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 2v6h-6"/>
-            <path d="M3 12a9 9 0 0 1 15.36-6.36L21 8"/>
-            <path d="M3 22v-6h6"/>
-            <path d="M21 12a9 9 0 0 1-15.36 6.36L3 16"/>
-          </svg>
-          <span>Boshidan boshlash</span>
-        </button>
-        <button type="button" class="btn-secondary pause-btn-tracks">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-            <polyline points="2 17 12 22 22 17"/>
-            <polyline points="2 12 12 17 22 12"/>
-          </svg>
-          <span>Trassani tanlash</span>
-        </button>
-        <button type="button" class="btn-secondary pause-btn-settings">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
-          <span>Sozlamalar</span>
-        </button>
+      <div class="dialog-actions">
+        <button type="button" class="btn-minimal btn-minimal--primary pause-btn-resume">Davom ettirish</button>
+        <button type="button" class="btn-minimal btn-minimal--secondary pause-btn-restart">Qayta boshlash</button>
+        <button type="button" class="btn-minimal btn-minimal--secondary pause-btn-menu">Menyu / Trassalar</button>
       </div>
     `
 
@@ -1255,16 +1128,10 @@ export class GameUI {
       this.controller.restart()
     })
 
-    card.querySelector('.pause-btn-tracks')?.addEventListener('click', () => {
+    card.querySelector('.pause-btn-menu')?.addEventListener('click', () => {
       this.triggerHaptic()
       this.closePauseModal()
-      this.openMenuModal('tracks')
-    })
-
-    card.querySelector('.pause-btn-settings')?.addEventListener('click', () => {
-      this.triggerHaptic()
-      this.closePauseModal()
-      this.openMenuModal('settings')
+      this.openDrawer('tracks')
     })
 
     overlay.appendChild(card)
@@ -1279,7 +1146,7 @@ export class GameUI {
   }
 
   // ==========================================
-  // CONFIRMATION DIALOG
+  // CONFIRM DIALOG
   // ==========================================
 
   private showConfirmDialog(title: string, message: string, onConfirm: () => void): void {
@@ -1288,18 +1155,20 @@ export class GameUI {
     }
 
     const overlay = document.createElement('div')
-    overlay.className = 'game-modal-overlay game-modal-overlay--confirm'
+    overlay.className = 'dialog-overlay'
     this.confirmDialogElement = overlay
 
     const card = document.createElement('div')
-    card.className = 'game-modal-card confirm-card'
+    card.className = 'dialog-card'
 
     card.innerHTML = `
-      <div class="confirm-card__title">${title}</div>
-      <div class="confirm-card__message">${message}</div>
-      <div class="confirm-card__actions">
-        <button type="button" class="btn-danger confirm-btn-yes">Ha, tozalansin</button>
-        <button type="button" class="btn-secondary confirm-btn-no">Bekor qilish</button>
+      <div class="dialog-header">
+        <div class="dialog-title">${title}</div>
+        <div class="dialog-subtitle">${message}</div>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="btn-minimal btn-minimal--danger confirm-btn-yes">Tozalansin</button>
+        <button type="button" class="btn-minimal btn-minimal--secondary confirm-btn-no">Bekor qilish</button>
       </div>
     `
 
@@ -1321,6 +1190,12 @@ export class GameUI {
   }
 
   destroy(): void {
+    window.removeEventListener('pointerup', this.boundGlobalPointerUp)
+    window.removeEventListener('pointercancel', this.boundGlobalPointerCancel)
+    window.removeEventListener('blur', this.boundWindowBlur)
+    window.removeEventListener('contextmenu', this.boundContextMenu, { capture: true })
+    document.removeEventListener('visibilitychange', this.boundWindowBlur)
+
     this.unsubscribeStateChange?.()
     this.releaseAllKeys()
     this.container?.remove()

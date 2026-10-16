@@ -413,40 +413,33 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
     }
   }
 
-  const activeTouchCounts = new Map<number, number>()
+  const activeKeysSet = new Set<number>()
   const activePointerKeys = new Map<number, number>()
-  const activePointerButtons = new Map<number, HTMLButtonElement>()
+  const activePointerButtons = new Map<number, HTMLElement>()
 
   const pressTouchKey = (keyCode: number): void => {
-    activeTouchCounts.set(keyCode, (activeTouchCounts.get(keyCode) ?? 0) + 1)
+    activeKeysSet.add(keyCode)
     gameCanvas.keyPressed(keyCode)
     render()
   }
 
   const releaseTouchKey = (keyCode: number): void => {
-    const nextCount = (activeTouchCounts.get(keyCode) ?? 1) - 1
-    if (nextCount > 0) {
-      activeTouchCounts.set(keyCode, nextCount)
-      return
-    }
-
-    activeTouchCounts.delete(keyCode)
+    activeKeysSet.delete(keyCode)
     gameCanvas.keyReleased(keyCode)
     render()
   }
 
   const releaseAllTouchKeys = (): void => {
-    for (const keyCode of activeTouchCounts.keys()) {
+    for (const keyCode of activeKeysSet) {
       gameCanvas.keyReleased(keyCode)
     }
-
+    activeKeysSet.clear()
     for (const button of activePointerButtons.values()) {
       button.classList.remove('mobile-control-button--pressed')
     }
-
-    activeTouchCounts.clear()
     activePointerKeys.clear()
     activePointerButtons.clear()
+    gameCanvas.resetInputState()
     render()
   }
 
@@ -468,7 +461,11 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
 
     void rollingAudio.resume()
     canvasElement.focus({ preventScroll: true })
-    button.setPointerCapture(event.pointerId)
+    try {
+      button.setPointerCapture(event.pointerId)
+    } catch {
+      // Ignore if pointer capture fails
+    }
     button.classList.add('mobile-control-button--pressed')
     activePointerKeys.set(event.pointerId, keyCode)
     activePointerButtons.set(event.pointerId, button)
@@ -482,8 +479,14 @@ export async function startGameRuntime(options: RuntimeOptions): Promise<() => v
     }
 
     event.preventDefault()
+    const button = activePointerButtons.get(event.pointerId)
+    button?.classList.remove('mobile-control-button--pressed')
+    try {
+      button?.releasePointerCapture(event.pointerId)
+    } catch {
+      // Ignore if capture already lost
+    }
     activePointerKeys.delete(event.pointerId)
-    activePointerButtons.get(event.pointerId)?.classList.remove('mobile-control-button--pressed')
     activePointerButtons.delete(event.pointerId)
     releaseTouchKey(keyCode)
   }
